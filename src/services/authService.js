@@ -1,7 +1,11 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
+const validateGoogleAccessToken = require("../utils/validateGoogleAccessToken");
 
-exports.findOrCreateUser = async (googleId, name, email) => {
+exports.findOrCreateUser = async (idToken) => {
+  const googleData = await validateGoogleAccessToken(idToken);
+  console.log(googleData);
+  const { googleId, name, email } = googleData.user;
   let user = await User.findOne({ googleId });
 
   if (!user) {

@@ -14,12 +14,14 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/users", require("./routes/userRoutes"));
+// app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/transactions", require("./routes/transactionRoutes"));
 app.use("/api/tasks", require("./routes/taskRoutes"));
 app.use("/api/categories", require("./routes/categoryRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 
 app.listen(process.env.PORT || 5000, () => {
-  logger.info(`Server running on port ${process.env.PORT || 5000}`);
+  logger.info(
+    `Server running on port http://localhost:${process.env.PORT || 5000}`
+  );
 });
