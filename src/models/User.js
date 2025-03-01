@@ -5,6 +5,11 @@ const userSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
   role: { type: String, enum: ["user", "admin"], default: "user" },
+  picture: {
+    type: String,
+    default:
+      "https://img.freepik.com/free-vector/illustration-businessman_53876-5856.jpg",
+  },
   createdAt: { type: Date, default: Date.now },
 });
 

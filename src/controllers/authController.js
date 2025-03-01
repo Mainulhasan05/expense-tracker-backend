@@ -12,3 +12,12 @@ exports.googleAuth = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await authService.getUser(req.user.id);
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

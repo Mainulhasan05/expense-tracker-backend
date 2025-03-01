@@ -5,8 +5,6 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const validateGoogleAccessToken = async (idToken) => {
   try {
-    console.log("Received Token:", idToken);
-
     // Verify the ID Token
     const ticket = await client.verifyIdToken({
       idToken,
@@ -14,8 +12,6 @@ const validateGoogleAccessToken = async (idToken) => {
     });
 
     const payload = ticket.getPayload();
-
-    console.log("User Info:", payload);
 
     return {
       valid: true,
