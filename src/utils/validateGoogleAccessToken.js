@@ -1,30 +1,33 @@
 require("dotenv").config();
 const { OAuth2Client } = require("google-auth-library");
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const validateGoogleAccessToken = async (accessToken) => {
-  try {
-    console.log(accessToken);
-    console.log(process.env.GOOGLE_CLIENT_ID);
-    client.setCredentials({ access_token: accessToken });
 
-    const userInfoResponse = await client.request({
-      url: "https://www.googleapis.com/oauth2/v3/userinfo",
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const validateGoogleAccessToken = async (idToken) => {
+  try {
+    console.log("Received Token:", idToken);
+
+    // Verify the ID Token
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
 
-    console.log("userInfoResponse", userInfoResponse.data);
+    const payload = ticket.getPayload();
 
-    const userInfo = userInfoResponse.data;
+    console.log("User Info:", payload);
 
     return {
       valid: true,
       user: {
-        googleId: userInfo.sub,
-        email: userInfo.email,
-        name: userInfo.name,
-        picture: userInfo.picture,
+        googleId: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture,
       },
     };
   } catch (error) {
+    console.error("Token Validation Error:", error);
     return {
       valid: false,
       error: error.message,
