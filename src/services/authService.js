@@ -4,11 +4,12 @@ const jwt = require("jsonwebtoken");
 const validateGoogleAccessToken = require("../utils/validateGoogleAccessToken");
 const DEFAULT_CATEGORIES = [
   { name: "Salary", type: "income" },
-  { name: "Freelancing", type: "income" },
-  { name: "Investment", type: "income" },
+  { name: "Gift", type: "income" },
   { name: "Groceries", type: "expense" },
   { name: "Transport", type: "expense" },
   { name: "Entertainment", type: "expense" },
+  { name: "Family", type: "expense" },
+  { name: "Medicine", type: "expense" },
 ];
 
 exports.findOrCreateUser = async (idToken) => {

@@ -1,24 +1,41 @@
 const Transaction = require("../models/Transaction");
+const mongoose = require("mongoose");
 
 exports.createTransaction = async (userId, transactionData) => {
   return await Transaction.create({ user: userId, ...transactionData });
 };
 
-exports.getUserTransactions = async (userId, month) => {
+exports.getUserTransactions = async (userId, month, page = 1) => {
   const startDate = new Date(`${month}-01`);
   const endDate = new Date(
     startDate.getFullYear(),
     startDate.getMonth() + 1,
     1
-  ); // First day of next month
+  );
+  const userIdObj = new mongoose.Types.ObjectId(userId);
+  const itemsPerPage = 1;
+  const skip = (page - 1) * itemsPerPage;
 
-  return await Transaction.aggregate([
+  const result = await Transaction.aggregate([
     {
       $match: {
-        user: userId,
+        user: userIdObj,
         date: { $gte: startDate, $lt: endDate },
       },
     },
-    { $group: { _id: "$type", total: { $sum: "$amount" } } },
+    { $sort: { date: -1 } }, // Sort transactions by date (latest first)
+    { $skip: skip },
+    { $limit: itemsPerPage },
   ]);
+
+  const totalTransactions = await Transaction.countDocuments({
+    user: userIdObj,
+    date: { $gte: startDate, $lt: endDate },
+  });
+
+  return {
+    transactions: result,
+    totalPages: Math.ceil(totalTransactions / itemsPerPage),
+    currentPage: page,
+  };
 };
