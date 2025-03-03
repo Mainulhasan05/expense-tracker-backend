@@ -28,8 +28,13 @@ exports.getTransactions = async (req, res) => {
 // deleteTransaction controller
 exports.deleteTransaction = async (req, res) => {
   try {
-    await transactionService.deleteTransaction(req.params.id);
-    res.status(200).json({ message: "Transaction deleted successfully" });
+    const transaction = await transactionService.deleteTransaction(
+      req.user.id,
+      req.params.id
+    );
+    res
+      .status(200)
+      .json({ message: "Transaction deleted successfully", transaction });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

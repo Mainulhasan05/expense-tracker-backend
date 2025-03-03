@@ -3,12 +3,19 @@ const router = express.Router();
 const dashboardController = require("../controllers/dashboardController");
 const authMiddleware = require("../middlewares/authMiddleware");
 
-router.get("/", authMiddleware, dashboardController.getDashboard);
+// getMonthlyTrends
+router.get(
+  "/monthly-trends",
+  authMiddleware,
+  dashboardController.getMonthlyTrends
+);
 // getRecentTransactions
 router.get(
   "/recent-transactions/:month",
   authMiddleware,
   dashboardController.getRecentTransactions
 );
+
+router.get("/:month", authMiddleware, dashboardController.getDashboard);
 
 module.exports = router;

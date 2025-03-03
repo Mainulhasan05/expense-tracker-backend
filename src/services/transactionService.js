@@ -41,5 +41,10 @@ exports.getUserTransactions = async (userId, month, page = 1) => {
 };
 
 exports.deleteTransaction = async (userId, transactionId) => {
-  return await Transaction.deleteOne({ _id: transactionId, user: userId });
+  const transaction = await Transaction.findOne({
+    _id: transactionId,
+    user: userId,
+  });
+  await Transaction.deleteOne({ _id: transactionId, user: userId });
+  return transaction;
 };
