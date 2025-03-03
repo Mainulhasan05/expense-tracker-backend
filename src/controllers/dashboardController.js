@@ -8,3 +8,16 @@ exports.getDashboard = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+
+// getRecentTransactions
+exports.getRecentTransactions = async (req, res) => {
+  try {
+    const transactions = await dashboardService.getRecentTransactions(
+      req.user.id,
+      req.params.month
+    );
+    res.status(200).json(transactions);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};

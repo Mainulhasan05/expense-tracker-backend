@@ -5,5 +5,6 @@ const authMiddleware = require("../middlewares/authMiddleware");
 
 router.post("/add", authMiddleware, transactionController.addTransaction);
 router.get("/:month", authMiddleware, transactionController.getTransactions);
+router.delete("/:id", authMiddleware, transactionController.deleteTransaction);
 
 module.exports = router;

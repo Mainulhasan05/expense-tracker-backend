@@ -17,3 +17,20 @@ exports.getDashboardData = async (userId) => {
 
   return { income, expense, balance: income - expense };
 };
+
+// recent 5 transactions of a user
+exports.getRecentTransactions = async (userId, month) => {
+  if (month) {
+    const transactions = await Transaction.find({
+      user: userId,
+      date: { $gte: new Date(new Date().setMonth(month - 1)) },
+    })
+      .sort({ date: -1 })
+      .limit(5);
+    return transactions;
+  }
+  const transactions = await Transaction.find({ user: userId })
+    .sort({ date: -1 })
+    .limit(5);
+  return transactions;
+};

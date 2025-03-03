@@ -1,3 +1,4 @@
+const e = require("express");
 const categoryService = require("../services/categoryService");
 
 exports.addCategory = async (req, res) => {
@@ -17,6 +18,18 @@ exports.getCategories = async (req, res) => {
   try {
     const categories = await categoryService.getUserCategories(req.user.id);
     res.status(200).json(categories);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+exports.deleteCategory = async (req, res) => {
+  try {
+    const category = await categoryService.deleteCategory(
+      req.user.id,
+      req.params.id
+    );
+    res.status(200).json(category);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

@@ -13,7 +13,7 @@ exports.getUserTransactions = async (userId, month, page = 1) => {
     1
   );
   const userIdObj = new mongoose.Types.ObjectId(userId);
-  const itemsPerPage = 1;
+  const itemsPerPage = 20;
   const skip = (page - 1) * itemsPerPage;
 
   const result = await Transaction.aggregate([
@@ -38,4 +38,8 @@ exports.getUserTransactions = async (userId, month, page = 1) => {
     totalPages: Math.ceil(totalTransactions / itemsPerPage),
     currentPage: page,
   };
+};
+
+exports.deleteTransaction = async (userId, transactionId) => {
+  return await Transaction.deleteOne({ _id: transactionId, user: userId });
 };
