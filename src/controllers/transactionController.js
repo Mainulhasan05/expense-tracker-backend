@@ -39,3 +39,30 @@ exports.deleteTransaction = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+
+exports.searchTransactions = async (req, res) => {
+  try {
+    const { search, category, type, startDate, endDate, page = 1 } = req.query;
+
+    // Validate required fields
+    if (!startDate || !endDate) {
+      return res
+        .status(400)
+        .json({ message: "Start date and end date are required." });
+    }
+
+    const transactions = await transactionService.searchUserTransactions(
+      req.user.id,
+      search,
+      category,
+      type,
+      new Date(startDate),
+      new Date(endDate),
+      parseInt(page)
+    );
+
+    res.status(200).json(transactions);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
