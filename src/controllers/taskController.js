@@ -33,3 +33,12 @@ exports.updateTask = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+
+exports.deleteTask = async (req, res) => {
+  try {
+    await taskService.deleteTask(req.user.id, req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};

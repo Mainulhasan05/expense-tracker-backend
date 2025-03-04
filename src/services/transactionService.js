@@ -2,7 +2,11 @@ const Transaction = require("../models/Transaction");
 const mongoose = require("mongoose");
 
 exports.createTransaction = async (userId, transactionData) => {
-  return await Transaction.create({ user: userId, ...transactionData });
+  const transaction = await Transaction.create({
+    user: userId,
+    ...transactionData,
+  });
+  return transaction;
 };
 
 exports.getUserTransactions = async (userId, month, page = 1) => {
