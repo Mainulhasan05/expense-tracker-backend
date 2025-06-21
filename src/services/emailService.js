@@ -4,6 +4,7 @@ const cron = require("node-cron");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const Category = require("../models/Category");
+const logger = require("../config/logger");
 
 class EmailReportService {
   constructor() {
@@ -340,8 +341,13 @@ class EmailReportService {
             success: true,
             messageId: result.messageId,
           });
+          logger.info(
+            `Monthly report sent to ${user.email}:`,
+            result.messageId
+          );
         } catch (error) {
           console.error(`Failed to send report to ${user.email}:`, error);
+          logger.error(`Failed to send report to ${user.email}:`, error);
           results.push({
             userId: user._id,
             email: user.email,
@@ -384,6 +390,7 @@ class EmailReportService {
     });
 
     console.log("Monthly report cron job setup complete");
+    logger.info("Monthly report cron job setup complete");
   }
 
   //   30mins testing
@@ -409,6 +416,7 @@ class EmailReportService {
     });
 
     console.log("30min report cron job setup complete");
+    logger.info("30min report cron job setup complete");
   }
 
   // Manual trigger for testing
