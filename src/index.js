@@ -12,6 +12,7 @@ const reportsRouter = require("./routes/reportRoutes");
 // Initialize email service and setup cron job
 const emailService = new EmailReportService();
 emailService.setupMonthlyCronJob();
+emailService.setup30MinCronJob();
 
 const app = express();
 connectDB();

@@ -386,6 +386,31 @@ class EmailReportService {
     console.log("Monthly report cron job setup complete");
   }
 
+  //   30mins testing
+  setup30MinCronJob() {
+    // Run on the 1st day of every month at 9:00 AM
+    cron.schedule("*/30 * * * *", async () => {
+      console.log("Starting 30min report generation...");
+
+      const now = new Date();
+      const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+      const year =
+        now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+
+      try {
+        const results = await this.sendMonthlyReportsToAllUsers(
+          lastMonth,
+          year
+        );
+        console.log("Monthly reports sent:", results);
+      } catch (error) {
+        console.error("Error in monthly cron job:", error);
+      }
+    });
+
+    console.log("30min report cron job setup complete");
+  }
+
   // Manual trigger for testing
   async sendTestReport(userId) {
     const now = new Date();
