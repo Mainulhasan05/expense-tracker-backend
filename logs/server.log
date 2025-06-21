@@ -124,3 +124,21 @@
 {"level":"info","message":"MongoDB connected successfully","timestamp":"2025-06-21T06:17:15.136Z"}
 {"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-06-21T06:17:37.673Z"}
 {"level":"info","message":"MongoDB connected successfully","timestamp":"2025-06-21T06:17:38.941Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-06-21T07:39:19.269Z"}
+{"level":"info","message":"30min report cron job setup complete","timestamp":"2025-06-21T07:39:19.291Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-06-21T07:39:20.238Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-06-21T07:39:21.891Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-06-21T07:42:40.345Z"}
+{"level":"info","message":"30min report cron job setup complete","timestamp":"2025-06-21T07:42:40.370Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-06-21T07:42:40.980Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-06-21T07:42:42.333Z"}
+{"level":"info","message":"Monthly report sent to mdrifatbd5@gmail.com:","timestamp":"2025-06-21T07:43:03.819Z"}
+{"level":"info","message":"Monthly report sent to mahmudurrahmanarif20@gmail.com:","timestamp":"2025-06-21T07:43:07.638Z"}
+{"level":"info","message":"Monthly report sent to bushratsuchona@gmail.com:","timestamp":"2025-06-21T07:43:11.487Z"}
+{"level":"info","message":"Monthly report sent to aburayhan049596@gmail.com:","timestamp":"2025-06-21T07:43:15.327Z"}
+{"level":"info","message":"Monthly report sent to khandakerfoysal518@gmail.com:","timestamp":"2025-06-21T07:43:19.162Z"}
+{"level":"info","message":"Monthly report sent to mdrifatbd5@gmail.com:","timestamp":"2025-06-21T07:44:03.040Z"}
+{"level":"info","message":"Monthly report sent to mahmudurrahmanarif20@gmail.com:","timestamp":"2025-06-21T07:44:08.025Z"}
+{"level":"info","message":"Monthly report sent to bushratsuchona@gmail.com:","timestamp":"2025-06-21T07:44:12.579Z"}
+{"level":"info","message":"Monthly report sent to aburayhan049596@gmail.com:","timestamp":"2025-06-21T07:44:16.413Z"}
+{"level":"info","message":"Monthly report sent to khandakerfoysal518@gmail.com:","timestamp":"2025-06-21T07:44:20.201Z"}

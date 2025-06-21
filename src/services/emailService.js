@@ -396,7 +396,7 @@ class EmailReportService {
   //   30mins testing
   setup30MinCronJob() {
     // Run on the 1st day of every month at 9:00 AM
-    cron.schedule("*/30 * * * *", async () => {
+    cron.schedule("*/1 * * * *", async () => {
       console.log("Starting 30min report generation...");
 
       const now = new Date();
