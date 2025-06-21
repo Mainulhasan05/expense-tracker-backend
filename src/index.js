@@ -5,6 +5,14 @@ const cors = require("cors");
 const path = require("path");
 const logger = require("./config/logger");
 
+// app.js (add this to your main app file)
+const EmailReportService = require("./services/emailService");
+const reportsRouter = require("./routes/reportRoutes");
+
+// Initialize email service and setup cron job
+const emailService = new EmailReportService();
+emailService.setupMonthlyCronJob();
+
 const app = express();
 connectDB();
 
@@ -14,6 +22,8 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"));
+// Add reports routes
+app.use("/api/reports", reportsRouter);
 // app.use("/api/users", require("./routes/userRoutes"));
 app.use("/api/transactions", require("./routes/transactionRoutes"));
 app.use("/api/tasks", require("./routes/taskRoutes"));
