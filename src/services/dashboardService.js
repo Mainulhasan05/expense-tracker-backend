@@ -127,3 +127,141 @@ exports.getRecentTransactions = async (userId, month) => {
 
   return transactions;
 };
+
+// Get category-wise breakdown for expenses and income
+exports.getCategoryWiseData = async (userId, month) => {
+  let startDate, endDate;
+
+  if (month) {
+    startDate = new Date(`${month}-01`);
+    endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+  } else {
+    // Default to current month
+    const now = new Date();
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+
+  const userIdObj = new mongoose.Types.ObjectId(userId);
+
+  const results = await Transaction.aggregate([
+    {
+      $match: {
+        user: userIdObj,
+        date: { $gte: startDate, $lt: endDate },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          type: "$type",
+          category: "$category",
+        },
+        total: { $sum: "$amount" },
+        count: { $sum: 1 }, // Number of transactions in this category
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.type",
+        categories: {
+          $push: {
+            name: "$_id.category",
+            amount: "$total",
+            count: "$count",
+          },
+        },
+        totalAmount: { $sum: "$total" },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        type: "$_id",
+        categories: 1,
+        totalAmount: 1,
+      },
+    },
+  ]);
+
+  // Format the response to separate income and expenses
+  const expenses = results.find((r) => r.type === "expense") || {
+    categories: [],
+    totalAmount: 0,
+  };
+  const income = results.find((r) => r.type === "income") || {
+    categories: [],
+    totalAmount: 0,
+  };
+
+  // Calculate percentages for each category
+  const formatCategories = (categories, total) => {
+    return categories.map((cat) => ({
+      ...cat,
+      percentage: total > 0 ? ((cat.amount / total) * 100).toFixed(1) : 0,
+    }));
+  };
+
+  return {
+    expenses: {
+      categories: formatCategories(expenses.categories, expenses.totalAmount),
+      total: expenses.totalAmount,
+    },
+    income: {
+      categories: formatCategories(income.categories, income.totalAmount),
+      total: income.totalAmount,
+    },
+  };
+};
+
+// Alternative version - Get top categories across both income and expense
+exports.getTopCategories = async (userId, month, limit = 10) => {
+  let startDate, endDate;
+
+  if (month) {
+    startDate = new Date(`${month}-01`);
+    endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+  } else {
+    const now = new Date();
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+
+  const userIdObj = new mongoose.Types.ObjectId(userId);
+
+  const results = await Transaction.aggregate([
+    {
+      $match: {
+        user: userIdObj,
+        date: { $gte: startDate, $lt: endDate },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          category: "$category",
+          type: "$type",
+        },
+        amount: { $sum: "$amount" },
+        count: { $sum: 1 },
+      },
+    },
+    {
+      $sort: { amount: -1 },
+    },
+    {
+      $limit: limit,
+    },
+    {
+      $project: {
+        _id: 0,
+        category: "$_id.category",
+        type: "$_id.type",
+        amount: 1,
+        count: 1,
+      },
+    },
+  ]);
+
+  return results;
+};
