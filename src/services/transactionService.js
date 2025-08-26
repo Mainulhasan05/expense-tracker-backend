@@ -1,7 +1,17 @@
 const Transaction = require("../models/Transaction");
+const Category = require("../models/Category");
 const mongoose = require("mongoose");
 
 exports.createTransaction = async (userId, transactionData) => {
+  // check if the category exists
+  const category = await Category.findById(transactionData.category);
+  if (!category) throw new Error("Category not found");
+  // check if the user is the owner of the category
+  if (category.user.toString() !== userId) throw new Error("Unauthorized");
+  // add category type in transactionData as type
+  transactionData.type = category.type;
+  transactionData.category = category.name;
+  
   const transaction = await Transaction.create({
     user: userId,
     ...transactionData,
