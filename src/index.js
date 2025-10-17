@@ -30,6 +30,9 @@ app.use("/api/transactions", require("./routes/transactionRoutes"));
 app.use("/api/tasks", require("./routes/taskRoutes"));
 app.use("/api/categories", require("./routes/categoryRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
+app.get("/",()=>{
+return "Hello from Finance"
+})
 
 app.listen(process.env.PORT || 5000, () => {
   logger.info(
