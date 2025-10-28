@@ -7,7 +7,13 @@ exports.googleAuth = async (req, res) => {
     const user = await authService.findOrCreateUser(idToken);
     const token = authService.generateToken(user);
 
-    res.status(200).json({ user, token });
+    // Remove sensitive data from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    delete userResponse.emailVerificationToken;
+    delete userResponse.resetPasswordToken;
+
+    res.status(200).json({ user: userResponse, token });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -36,7 +42,14 @@ exports.login = async (req, res) => {
   try {
     const { email, password, fcmToken } = req.body;
     const { user, token } = await authService.login(email, password,fcmToken);
-    res.status(200).json({ user, token });
+
+    // Remove sensitive data from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+    delete userResponse.emailVerificationToken;
+    delete userResponse.resetPasswordToken;
+
+    res.status(200).json({ user: userResponse, token });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -64,14 +77,49 @@ exports.resetPassword = async (req, res) => {
 };
 
 
-exports.setDummyPasswordForGoogleUsers = async (req, res) => {
+exports.verifyEmail = async (req, res) => {
   try {
-    const result = await authService.setDummyPasswordForGoogleUsers();
+    const { token } = req.params;
+    const user = await authService.verifyEmail(token);
     res.status(200).json({
-      message: "Dummy password set for all Google users",
+      message: "Email verified successfully! You can now log in.",
+      user
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+exports.resendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+    await authService.resendVerificationEmail(email);
+    res.status(200).json({ message: "Verification email sent. Please check your inbox." });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+exports.setPasswordsForGoogleUsers = async (req, res) => {
+  try {
+    const result = await authService.setPasswordsForGoogleUsers();
+    res.status(200).json({
+      message: "Passwords generated and emailed to all Google users",
       result,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id; // From auth middleware
+
+    const result = await authService.changePassword(userId, currentPassword, newPassword);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 };

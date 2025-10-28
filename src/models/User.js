@@ -10,6 +10,8 @@ const userSchema = new mongoose.Schema(
     password: { type: String }, // required only if registered by email
     fcmToken: { type: String },
     isVerified: { type: Boolean, default: false },
+    emailVerificationToken: String,
+    emailVerificationExpire: Date,
     resetPasswordToken: String,
     resetPasswordExpire: Date,
 

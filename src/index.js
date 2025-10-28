@@ -4,6 +4,7 @@ const connectDB = require("./config/db");
 const cors = require("cors");
 const path = require("path");
 const logger = require("./config/logger");
+const { testEmailConnection, sendTestEmail } = require("./utils/sendEmail");
 
 // app.js (add this to your main app file)
 const EmailReportService = require("./services/emailService");
@@ -34,8 +35,21 @@ app.get("/",()=>{
 return "Hello from Finance"
 })
 
-app.listen(process.env.PORT || 5000, () => {
+app.listen(process.env.PORT || 5000, async () => {
   logger.info(
     `Server running on port http://localhost:${process.env.PORT || 5000}`
   );
+
+  // Test email connection on startup
+  console.log("\n🔍 Testing email configuration...");
+  const isEmailReady = await testEmailConnection();
+
+  if (!isEmailReady) {
+    console.warn("⚠️  Email service is not available. Please check your configuration.\n");
+  } else {
+    console.log("✅ Email service is ready to use!\n");
+  }
+
+  // To manually send a test email, you can call:
+  // await sendTestEmail("recipient@example.com");
 });

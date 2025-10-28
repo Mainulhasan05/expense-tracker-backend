@@ -10,8 +10,13 @@ router.post("/login", authController.login);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/reset-password/:token", authController.resetPassword);
 
+// Email verification
+router.get("/verify-email/:token", authController.verifyEmail);
+router.post("/resend-verification", authController.resendVerificationEmail);
+
 router.get("/profile", authMiddleware, authController.getProfile);
-router.get("/set-dummy-password", authController.setDummyPasswordForGoogleUsers);
+router.post("/change-password", authMiddleware, authController.changePassword);
+router.get("/set-passwords-google-users", authController.setPasswordsForGoogleUsers);
 
 
 module.exports = router;

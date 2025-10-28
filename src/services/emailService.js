@@ -8,9 +8,11 @@ const logger = require("../config/logger");
 
 class EmailReportService {
   constructor() {
-    // Configure email transporter (using Gmail as example)
+    // Configure email transporter (using custom SMTP server)
     this.transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "mail.mainulhasan99.xyz",
+      port: 465, // SSL/TLS port
+      secure: true, // use SSL/TLS
       auth: {
         user: process.env.EMAIL_USER, // your email
         pass: process.env.EMAIL_PASS, // your app password
@@ -313,6 +315,12 @@ class EmailReportService {
         to: reportData.user.email,
         subject: `💰 Your ${reportData.monthName} ${year} Financial Report`,
         html: htmlContent,
+        priority: 'high', // Set high priority for immediate delivery
+        headers: {
+          'X-Priority': '1', // Highest priority
+          'X-MSMail-Priority': 'High',
+          'Importance': 'high'
+        }
       };
       const result = await this.transporter.sendMail(mailOptions);
       console.log(
