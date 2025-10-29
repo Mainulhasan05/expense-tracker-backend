@@ -11,6 +11,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const telegramService = require('./telegramService');
 const cron = require('node-cron');
+const voiceTranscriptionService = require('./voiceTranscriptionService');
 
 class TelegramBotService {
   constructor() {
@@ -723,11 +724,117 @@ ${process.env.APP_URL}
 
     if (!user) return;
 
-    this.bot.sendMessage(chatId,
-      `🎤 Voice message received!\n\n` +
-      `Voice transcription coming soon...\n` +
-      `For now, please use text commands.`
-    );
+    try {
+      // Send processing message
+      const processingMsg = await this.bot.sendMessage(chatId, `🎤 Processing voice message...\n⏳ Transcribing audio...`);
+
+      // Get voice file info
+      const fileId = msg.voice.file_id;
+      const file = await this.bot.getFile(fileId);
+      const filePath = file.file_path;
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`;
+
+      // Download audio file
+      const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+      const audioBuffer = Buffer.from(response.data);
+
+      // Create temp directory if it doesn't exist
+      const tempDir = path.join(__dirname, '../../uploads/temp');
+      try {
+        await fs.mkdir(tempDir, { recursive: true });
+      } catch (error) {
+        // Directory might already exist
+      }
+
+      // Save audio file temporarily
+      const tempFilePath = path.join(tempDir, `voice_${Date.now()}.ogg`);
+      await fs.writeFile(tempFilePath, audioBuffer);
+
+      // Transcribe using AssemblyAI
+      const transcriptionResult = await voiceTranscriptionService.transcribeAudio(tempFilePath);
+
+      // Clean up temp file
+      await fs.unlink(tempFilePath).catch(() => {});
+
+      if (!transcriptionResult.success) {
+        await this.bot.editMessageText(
+          `❌ Failed to transcribe voice message.\n\n` +
+          `${transcriptionResult.error || 'Please try again or use text commands.'}\n\n` +
+          `💡 Tip: Speak clearly and ensure good audio quality.`,
+          { chat_id: chatId, message_id: processingMsg.message_id }
+        );
+        return;
+      }
+
+      const transcribedText = transcriptionResult.text;
+
+      // Update processing message with transcription
+      await this.bot.editMessageText(
+        `🎤 Voice transcribed!\n\n` +
+        `📝 _"${transcribedText}"_\n\n` +
+        `⏳ Processing transaction...`,
+        { chat_id: chatId, message_id: processingMsg.message_id, parse_mode: 'Markdown' }
+      );
+
+      // Parse the transcribed text
+      let parsed = nlpParser.parseQuickFormat(transcribedText);
+
+      // If not valid, try full NLP parse
+      if (!parsed || !nlpParser.isValid(parsed)) {
+        parsed = nlpParser.parse(transcribedText);
+      }
+
+      // If still not valid, send error
+      if (!nlpParser.isValid(parsed)) {
+        await this.bot.editMessageText(
+          `🎤 Voice transcribed!\n\n` +
+          `📝 _"${transcribedText}"_\n\n` +
+          `❌ Couldn't understand the expense format.\n\n` +
+          `💡 Try saying something like:\n` +
+          `• "Coffee 5"\n` +
+          `• "Spent 50 on groceries"\n` +
+          `• "Lunch 25 dollars"`,
+          { chat_id: chatId, message_id: processingMsg.message_id, parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      // Create transaction
+      const transaction = await this.createTransaction(user, parsed);
+      const balance = await this.calculateBalance(user._id);
+
+      // Send success message
+      await this.bot.editMessageText(
+        `✅ Voice expense added!\n\n` +
+        `🎤 Transcribed: _"${transcribedText}"_\n\n` +
+        `💰 Amount: $${parsed.amount.toFixed(2)}\n` +
+        `📁 Category: ${parsed.category}\n` +
+        `📝 Note: ${parsed.description}\n\n` +
+        `💵 Current Balance: $${balance.toFixed(2)}\n\n` +
+        `⚡ Powered by AssemblyAI (Account: ${transcriptionResult.accountUsed})`,
+        { chat_id: chatId, message_id: processingMsg.message_id, parse_mode: 'Markdown' }
+      );
+
+      logger.info(`Voice expense added via Telegram: ${user.email} - $${parsed.amount} (${transcriptionResult.audioSeconds}s audio)`);
+
+    } catch (error) {
+      logger.error('Error processing voice message:', error);
+
+      if (error.message.includes('No available AssemblyAI accounts')) {
+        this.bot.sendMessage(chatId,
+          `❌ Voice transcription unavailable.\n\n` +
+          `All AssemblyAI accounts are currently exhausted or rate-limited.\n` +
+          `Please use text commands for now.\n\n` +
+          `Admin: Please add more AssemblyAI accounts or wait for rate limits to reset.`
+        );
+      } else {
+        this.bot.sendMessage(chatId,
+          `❌ Error processing voice message.\n\n` +
+          `Please try again or use text commands:\n` +
+          `Example: /add 50 groceries`
+        );
+      }
+    }
   }
 
   // Helper methods

@@ -35,6 +35,7 @@ app.use("/api/tasks", require("./routes/taskRoutes"));
 app.use("/api/categories", require("./routes/categoryRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/telegram", require("./routes/telegramRoutes"));
+app.use("/api/admin", require("./routes/adminRoutes"));
 app.get("/",()=>{
 return "Hello from Finance"
 })
