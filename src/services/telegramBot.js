@@ -810,8 +810,7 @@ ${process.env.APP_URL}
         `💰 Amount: $${parsed.amount.toFixed(2)}\n` +
         `📁 Category: ${parsed.category}\n` +
         `📝 Note: ${parsed.description}\n\n` +
-        `💵 Current Balance: $${balance.toFixed(2)}\n\n` +
-        `⚡ Powered by AssemblyAI (Account: ${transcriptionResult.accountUsed})`,
+        `💵 Current Balance: $${balance.toFixed(2)}`,
         { chat_id: chatId, message_id: processingMsg.message_id, parse_mode: 'Markdown' }
       );
 
@@ -822,10 +821,9 @@ ${process.env.APP_URL}
 
       if (error.message.includes('No available AssemblyAI accounts')) {
         this.bot.sendMessage(chatId,
-          `❌ Voice transcription unavailable.\n\n` +
-          `All AssemblyAI accounts are currently exhausted or rate-limited.\n` +
-          `Please use text commands for now.\n\n` +
-          `Admin: Please add more AssemblyAI accounts or wait for rate limits to reset.`
+          `❌ Voice transcription temporarily unavailable.\n\n` +
+          `Please use text commands for now:\n` +
+          `Example: /add 50 groceries`
         );
       } else {
         this.bot.sendMessage(chatId,

@@ -2,6 +2,12 @@ const axios = require("axios");
 const AssemblyAIAccount = require("../models/AssemblyAIAccount");
 const fs = require("fs");
 const FormData = require("form-data");
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+const path = require("path");
+
+// Set FFmpeg path
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 // AssemblyAI pricing per second (Nano tier: $0.12/hour = $0.00003333/second)
 const NANO_TIER_COST_PER_SECOND = 0.00003333;
@@ -108,6 +114,44 @@ class VoiceTranscriptionService {
   }
 
   /**
+   * Convert audio file to MP3 format
+   * AssemblyAI supports MP3, WAV, but not OGG with Opus codec
+   */
+  async convertToMp3(inputPath) {
+    return new Promise((resolve, reject) => {
+      const outputPath = inputPath.replace(/\.[^.]+$/, ".mp3");
+
+      // If already MP3 or WAV, no conversion needed
+      if (/\.(mp3|wav)$/i.test(inputPath)) {
+        resolve(inputPath);
+        return;
+      }
+
+      console.log(`Converting ${path.basename(inputPath)} to MP3...`);
+
+      ffmpeg(inputPath)
+        .toFormat("mp3")
+        .audioCodec("libmp3lame")
+        .audioBitrate("128k")
+        .on("end", () => {
+          console.log(`Conversion completed: ${path.basename(outputPath)}`);
+          // Delete original file after conversion
+          try {
+            fs.unlinkSync(inputPath);
+          } catch (err) {
+            console.error("Error deleting original file:", err);
+          }
+          resolve(outputPath);
+        })
+        .on("error", (err) => {
+          console.error("FFmpeg conversion error:", err);
+          reject(new Error(`Audio conversion failed: ${err.message}`));
+        })
+        .save(outputPath);
+    });
+  }
+
+  /**
    * Main transcription method with round-robin account selection
    */
   async transcribeAudio(filePath, options = {}) {
@@ -124,11 +168,14 @@ class VoiceTranscriptionService {
       // Check and increment rate limit
       await account.incrementRateLimit();
 
+      // Convert audio to MP3 if needed (for OGG/Opus compatibility)
+      const convertedPath = await this.convertToMp3(filePath);
+
       // Upload audio file
       console.log(
         `Using AssemblyAI account: ${account.name} (${account.usagePercentage.toFixed(1)}% used)`
       );
-      const audioUrl = await this.uploadAudio(filePath, account.apiKey);
+      const audioUrl = await this.uploadAudio(convertedPath, account.apiKey);
 
       // Create transcription
       const transcription = await this.createTranscription(
