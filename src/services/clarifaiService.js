@@ -143,7 +143,7 @@ RETURN ONLY JSON:`;
 
       // Generate prompt
       const prompt = this.generatePrompt(userMessage, userCategories);
-      console.log("Generated Prompt:", prompt);
+      
 
       // Call Clarifai API
       const rawResponse = await this.callClarifai(account, prompt);

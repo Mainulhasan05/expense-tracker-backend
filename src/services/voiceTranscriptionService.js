@@ -181,12 +181,14 @@ class VoiceTranscriptionService {
       );
     }
 
+    let convertedPath = null;
+
     try {
       // Check and increment rate limit
       await account.incrementRateLimit();
 
       // Convert audio to MP3 if needed (for OGG/Opus compatibility)
-      const convertedPath = await this.convertToMp3(filePath);
+      convertedPath = await this.convertToMp3(filePath);
 
       // Upload audio file
       console.log(
@@ -235,6 +237,16 @@ class VoiceTranscriptionService {
     } catch (error) {
       await account.recordError(error.message);
       throw error;
+    } finally {
+      // ALWAYS clean up the converted MP3 file (runs in both success and error cases)
+      if (convertedPath && convertedPath !== filePath) {
+        try {
+          fs.unlinkSync(convertedPath);
+          console.log(`🗑️  Deleted converted file: ${path.basename(convertedPath)}`);
+        } catch (cleanupErr) {
+          console.error(`⚠️  Failed to delete ${path.basename(convertedPath)}:`, cleanupErr.message);
+        }
+      }
     }
   }
 
