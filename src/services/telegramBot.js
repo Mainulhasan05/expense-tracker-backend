@@ -817,7 +817,7 @@ ${process.env.APP_URL}
 
       // Transcribe using AssemblyAI
       const transcriptionResult = await voiceTranscriptionService.transcribeAudio(tempFilePath);
-      console.log('Transcription Result:', transcriptionResult);
+      
 
       // Clean up temp file
       await fs.unlink(tempFilePath).catch(() => {});
@@ -847,6 +847,7 @@ ${process.env.APP_URL}
 
       // Parse with Clarifai AI
       const aiResult = await clarifaiService.parseTransaction(transcribedText, categories);
+      console.log(aiResult);
 
       // Delete processing message
       await this.bot.deleteMessage(chatId, processingMsg.message_id);
@@ -931,7 +932,7 @@ ${process.env.APP_URL}
           `${emoji} ${symbol}${Math.abs(t.amount)} - ${t.description}\n` +
           `📁 ${t.category}\n` +
           `💵 Balance: ৳${balance.toFixed(2)}\n\n` +
-          `🤖 Powered by AI`,
+          
           { parse_mode: 'Markdown' }
         );
 

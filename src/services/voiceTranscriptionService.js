@@ -50,13 +50,13 @@ class VoiceTranscriptionService {
 
     // If no language specified, use automatic detection
     // This works better for multilingual users (English, Bengali, Banglish mix)
-    if (!options.language && !options.language_code) {
+    // if (!options.language && !options.language_code) {
       // Use language detection
       transcriptionConfig.language_detection = true;
-    } else {
+    // } else {
       // Use specified language
-      transcriptionConfig.language_code = options.language || options.language_code || "en";
-    }
+      // transcriptionConfig.language_code = "bn";
+    // }
 
     // Supported languages: en (English), bn (Bengali), hi (Hindi), etc.
     // Note: AssemblyAI has limited Bengali support, so language detection helps

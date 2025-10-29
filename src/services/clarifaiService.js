@@ -8,26 +8,28 @@ class ClarifaiService {
 
   /**
    * Generate optimized prompt for transaction parsing
-   * Supports English, Bengali, and mixed language inputs
+   * Configured for English and Bengali (বাংলা) languages only
    */
   generatePrompt(userMessage, userCategories = []) {
     const categoryList = userCategories.length > 0
       ? userCategories.map(cat => `"${cat.name}" (${cat.type})`).join(", ")
       : "Groceries, Transport, Food, Shopping, Bills, Entertainment, Health, Medicine, Salary, Gift";
 
-    return `You are a financial transaction parser for a Bangladeshi expense tracker app. Users may write in English, Bengali (বাংলা), Banglish (Bengali with English letters), or mixed language.
+    return `You are a financial transaction parser for a Bangladeshi expense tracker app. Users write in ENGLISH or BENGALI (বাংলা) language only.
 
 TASK: Parse the user's message and extract ALL transactions mentioned.
 
 RULES:
 1. Return ONLY valid JSON, nothing else
 2. If the message is NOT about money/transactions, return: {"valid": false, "reason": "Not a transaction"}
-3. Support multiple currencies: Taka (টাকা, tk, taka, ৳), Dollar ($), Rupee (₹)
+3. Support multiple currencies: Taka (টাকা, tk, taka, ৳), Dollar ($),
 4. Expense = negative amount, Income = positive amount
 5. If no category matches perfectly, use "other"
 6. Extract date if mentioned, otherwise use "today"
 7. Support Bengali numbers: ০১২৩৪৫৬৭৮৯ and English numbers: 0123456789
 8. Handle multiple transactions in one message
+9. Use the USER'S CATEGORIES provided below for categorization
+10. Accept English, Bengali, and romanized Bengali (e.g., "bazar", "taka", "kinlam")
 
 USER'S CATEGORIES: ${categoryList}
 
@@ -41,25 +43,29 @@ OUTPUT FORMAT (JSON):
       "description": "brief description",
       "category": "category name from user's list or 'other'",
       "date": "YYYY-MM-DD" or "today",
-      "currency": "BDT" or "USD" or "INR"
+      "currency": "BDT" or "USD"
     }
   ]
 }
 
 EXAMPLES:
-Input: "ricksha vara 20tk"
-Output: {"valid": true, "transactions": [{"type": "expense", "amount": -20, "description": "Rickshaw fare", "category": "Transport", "date": "today", "currency": "BDT"}]}
 
-Input: "আজকে ৫০০ টাকা বাজার করেছি"
-Output: {"valid": true, "transactions": [{"type": "expense", "amount": -500, "description": "Grocery shopping", "category": "Groceries", "date": "today", "currency": "BDT"}]}
+English Input: "lunch 250tk"
+Output: {"valid": true, "transactions": [{"type": "expense", "amount": -250, "description": "Lunch", "category": "Food", "date": "today", "currency": "BDT"}]}
 
-Input: "salary peyechi 50000 taka"
+Bengali Input: "আজকে ৫০০ টাকা বাজার করেছি"
+Output: {"valid": true, "transactions": [{"type": "expense", "amount": -500, "description": "বাজার", "category": "Groceries", "date": "today", "currency": "BDT"}]}
+
+English Input: "received salary 50000 taka"
 Output: {"valid": true, "transactions": [{"type": "income", "amount": 50000, "description": "Salary received", "category": "Salary", "date": "today", "currency": "BDT"}]}
 
-Input: "lunch 250tk and coffee 80tk"
+English Input: "lunch 250tk and coffee 80tk"
 Output: {"valid": true, "transactions": [{"type": "expense", "amount": -250, "description": "Lunch", "category": "Food", "date": "today", "currency": "BDT"}, {"type": "expense", "amount": -80, "description": "Coffee", "category": "Food", "date": "today", "currency": "BDT"}]}
 
-Input: "hello how are you"
+Bengali Input: "বেতন ৫০০০০ টাকা পেয়েছি"
+Output: {"valid": true, "transactions": [{"type": "income", "amount": 50000, "description": "বেতন", "category": "Salary", "date": "today", "currency": "BDT"}]}
+
+English Input: "hello how are you"
 Output: {"valid": false, "reason": "Not a transaction"}
 
 USER MESSAGE: ${userMessage}
@@ -137,6 +143,7 @@ RETURN ONLY JSON:`;
 
       // Generate prompt
       const prompt = this.generatePrompt(userMessage, userCategories);
+      console.log("Generated Prompt:", prompt);
 
       // Call Clarifai API
       const rawResponse = await this.callClarifai(account, prompt);
