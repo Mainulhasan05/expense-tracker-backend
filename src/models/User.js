@@ -32,6 +32,37 @@ const userSchema = new mongoose.Schema(
     },
 
     role: { type: String, default: "user" },
+
+    // Security & Monitoring
+    registrationIp: { type: String },
+    registrationGeo: {
+      country: String,
+      region: String,
+      city: String,
+      timezone: String,
+      coordinates: [Number],
+    },
+    lastLoginIp: { type: String },
+    lastLoginGeo: {
+      country: String,
+      region: String,
+      city: String,
+    },
+    loginHistory: [
+      {
+        ip: String,
+        userAgent: String,
+        timestamp: { type: Date, default: Date.now },
+        country: String,
+        city: String,
+      },
+    ],
+    suspiciousActivityFlags: { type: Number, default: 0 },
+    accountStatus: {
+      type: String,
+      enum: ["active", "suspended", "flagged"],
+      default: "active",
+    },
   },
   { timestamps: true }
 );

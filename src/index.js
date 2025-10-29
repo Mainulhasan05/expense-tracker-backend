@@ -6,6 +6,23 @@ const path = require("path");
 const logger = require("./config/logger");
 const { testEmailConnection, sendTestEmail } = require("./utils/sendEmail");
 
+// Security and monitoring services
+const { ipTrackingMiddleware } = require("./middlewares/ipTrackingMiddleware");
+const {
+  generalLimiter,
+  authLimiter,
+  registrationLimiter,
+  passwordResetLimiter,
+  uploadLimiter,
+  transactionLimiter,
+} = require("./middlewares/rateLimitMiddleware");
+const {
+  helmetConfig,
+  sanitize,
+  corsOptions,
+} = require("./middlewares/securityMiddleware");
+const systemHealthMonitor = require("./services/systemHealthMonitor");
+
 // app.js (add this to your main app file)
 const EmailReportService = require("./services/emailService");
 const reportsRouter = require("./routes/reportRoutes");
@@ -19,11 +36,25 @@ emailService.setupMonthlyCronJob();
 const telegramBot = require("./services/telegramBot");
 
 const app = express();
+
+// Trust proxy - Required for nginx reverse proxy to get real client IP
+app.set("trust proxy", true);
+
 connectDB();
 
-app.use(cors());
+// Security middleware (must be applied in this order)
+// 1. IP tracking - Extract real client IP from nginx headers
+app.use(ipTrackingMiddleware);
+
+// 2. Security headers and protection
+app.use(helmetConfig); // Security headers
+app.use(cors(corsOptions)); // CORS with strict origin checking
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
+app.use(sanitize); // MongoDB injection protection
+
+// 3. General rate limiting
+app.use(generalLimiter);
 
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"));
@@ -58,6 +89,20 @@ app.listen(process.env.PORT || 5000, async () => {
   // Initialize Telegram bot
   console.log("🔍 Initializing Telegram bot...");
   await telegramBot.initialize();
+
+  // Start system health monitoring
+  console.log("🔍 Starting system health monitoring...");
+  systemHealthMonitor.startHealthChecks();
+  systemHealthMonitor.monitorErrors();
+  console.log("✅ System monitoring active!\n");
+
+  logger.info("🛡️  Security features enabled:");
+  logger.info("  - IP tracking and geolocation");
+  logger.info("  - Rate limiting per IP address");
+  logger.info("  - Abuse detection and monitoring");
+  logger.info("  - Admin Telegram notifications");
+  logger.info("  - Security headers (Helmet)");
+  logger.info("  - MongoDB injection protection");
 
   // To manually send a test email, you can call:
   // await sendTestEmail("recipient@example.com");

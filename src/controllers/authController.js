@@ -31,7 +31,10 @@ exports.getProfile = async (req, res) => {
 exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    const user = await authService.register(name, email, password);
+    const ip = req.clientIp;
+    const geoInfo = req.geoInfo;
+
+    const user = await authService.register(name, email, password, ip, geoInfo);
     res.status(201).json({ message: "User registered successfully", user });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -41,7 +44,18 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password, fcmToken } = req.body;
-    const { user, token } = await authService.login(email, password,fcmToken);
+    const ip = req.clientIp;
+    const geoInfo = req.geoInfo;
+    const userAgent = req.get("user-agent");
+
+    const { user, token } = await authService.login(
+      email,
+      password,
+      fcmToken,
+      ip,
+      geoInfo,
+      userAgent
+    );
 
     // Remove sensitive data from response
     const userResponse = user.toObject();

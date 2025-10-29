@@ -5,6 +5,7 @@ const adminController = require("../controllers/adminController");
 const assemblyAIController = require("../controllers/assemblyAIController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
+const { uploadLimiter } = require("../middlewares/rateLimitMiddleware");
 
 // Configure multer for audio file uploads
 const upload = multer({
@@ -46,6 +47,7 @@ router.put("/assemblyai/accounts/:id", assemblyAIController.updateAccount);
 router.delete("/assemblyai/accounts/:id", assemblyAIController.deleteAccount);
 router.post(
   "/assemblyai/test",
+  uploadLimiter,
   upload.single("audio"),
   assemblyAIController.testTranscription
 );

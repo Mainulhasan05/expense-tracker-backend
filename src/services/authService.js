@@ -4,6 +4,8 @@ const Category = require("../models/Category");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const validateGoogleAccessToken = require("../utils/validateGoogleAccessToken");
+const adminNotificationService = require("./adminNotificationService");
+const abuseMonitoringService = require("./abuseMonitoringService");
 const DEFAULT_CATEGORIES = [
   { name: "Salary", type: "income" },
   { name: "Gift", type: "income" },
@@ -56,12 +58,27 @@ exports.generateToken = (user) => {
 };
 
 // Email Register
-exports.register = async (name, email, password) => {
+exports.register = async (name, email, password, ip, geoInfo) => {
   let user = await User.findOne({ email });
   if (user) throw new Error("Email already exists");
 
-  // Create user with unverified status
-  user = await User.create({ name, email, password, isVerified: false });
+  // Check for registration abuse
+  await abuseMonitoringService.checkRegistrationAbuse(ip, geoInfo);
+
+  // Create user with unverified status and registration tracking
+  user = await User.create({
+    name,
+    email,
+    password,
+    isVerified: false,
+    registrationIp: ip,
+    registrationGeo: geoInfo,
+  });
+
+  // Notify admin of new registration
+  adminNotificationService
+    .notifyNewUserRegistration(user, ip, geoInfo)
+    .catch((err) => console.error("Failed to notify admin:", err));
 
   // Generate verification token
   const verificationToken = crypto.randomBytes(32).toString("hex");
@@ -120,19 +137,72 @@ exports.register = async (name, email, password) => {
 };
 
 // Email Login
-exports.login = async (email, password, fcmToken) => {
+exports.login = async (email, password, fcmToken, ip, geoInfo, userAgent) => {
   const user = await User.findOne({ email });
-  if (!user) throw new Error("Invalid email or password");
+  if (!user) {
+    // Record failed login attempt
+    if (ip) {
+      abuseMonitoringService.recordFailedLogin(ip, email, geoInfo);
+    }
+    throw new Error("Invalid email or password");
+  }
 
   const isMatch = await user.comparePassword(password);
-  if (!isMatch) throw new Error("Invalid email or password");
+  if (!isMatch) {
+    // Record failed login attempt
+    if (ip) {
+      abuseMonitoringService.recordFailedLogin(ip, email, geoInfo);
+    }
+    throw new Error("Invalid email or password");
+  }
 
   // Check if email is verified
   if (!user.isVerified) {
-    throw new Error("Please verify your email before logging in. Check your inbox for the verification link.");
+    throw new Error(
+      "Please verify your email before logging in. Check your inbox for the verification link."
+    );
   }
 
-  // update the user's fcmToken
+  // Clear failed login attempts on successful login
+  if (ip) {
+    abuseMonitoringService.clearFailedLogins(ip, email);
+  }
+
+  // Check for suspicious activity
+  if (ip && geoInfo) {
+    abuseMonitoringService
+      .checkSuspiciousActivity(user, ip, geoInfo)
+      .catch((err) => console.error("Error checking suspicious activity:", err));
+  }
+
+  // Update login tracking
+  user.lastLoginIp = ip;
+  user.lastLoginGeo = geoInfo
+    ? {
+        country: geoInfo.country,
+        region: geoInfo.region,
+        city: geoInfo.city,
+      }
+    : undefined;
+
+  // Add to login history (keep last 20)
+  if (!user.loginHistory) {
+    user.loginHistory = [];
+  }
+  user.loginHistory.push({
+    ip,
+    userAgent,
+    timestamp: new Date(),
+    country: geoInfo?.country,
+    city: geoInfo?.city,
+  });
+
+  // Keep only last 20 login entries
+  if (user.loginHistory.length > 20) {
+    user.loginHistory = user.loginHistory.slice(-20);
+  }
+
+  // Update the user's fcmToken
   user.fcmToken = fcmToken;
   await user.save();
 
