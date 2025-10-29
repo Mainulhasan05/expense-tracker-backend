@@ -1,4 +1,11 @@
+# Logs
 /logs
-/logs/server.log
+
+# Dependencies
 /node_modules
+
+# Environment variables
 .env
+
+# Uploads
+/uploads
