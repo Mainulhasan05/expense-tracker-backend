@@ -12,11 +12,14 @@ const path = require('path');
 const telegramService = require('./telegramService');
 const cron = require('node-cron');
 const voiceTranscriptionService = require('./voiceTranscriptionService');
+const clarifaiService = require('./clarifaiService');
 
 class TelegramBotService {
   constructor() {
     this.bot = null;
     this.isInitialized = false;
+    // Store pending transactions for user confirmation
+    this.pendingTransactions = new Map();
   }
 
   /**
@@ -98,6 +101,9 @@ class TelegramBotService {
 
     // Handle voice messages
     this.bot.on('voice', (msg) => this.handleVoice(msg));
+
+    // Handle callback queries (confirmation buttons)
+    this.bot.on('callback_query', (query) => this.handleCallbackQuery(query));
   }
 
   /**
@@ -273,27 +279,86 @@ class TelegramBotService {
     if (!user) return; // Silently ignore if not linked
 
     try {
-      // Try quick format first: "coffee 5"
-      let parsed = nlpParser.parseQuickFormat(msg.text);
+      // Send "processing" message
+      const processingMsg = await this.bot.sendMessage(chatId, '🤖 Understanding your message...');
 
-      // If not valid, try full NLP parse
-      if (!parsed || !nlpParser.isValid(parsed)) {
-        parsed = nlpParser.parse(msg.text);
+      // Get user's categories for better AI suggestions
+      const categories = await Category.find({ user: user._id });
+
+      // Parse message with Clarifai AI
+      const result = await clarifaiService.parseTransaction(msg.text, categories);
+
+      // Delete processing message
+      await this.bot.deleteMessage(chatId, processingMsg.message_id);
+
+      if (!result.success) {
+        // Try fallback to old parser for simple cases
+        let parsed = nlpParser.parseQuickFormat(msg.text);
+        if (!parsed || !nlpParser.isValid(parsed)) {
+          parsed = nlpParser.parse(msg.text);
+        }
+
+        if (!nlpParser.isValid(parsed)) return; // Silently ignore invalid messages
+
+        // Use old parser result
+        const transaction = await this.createTransaction(user, parsed);
+        const balance = await this.calculateBalance(user._id);
+
+        this.bot.sendMessage(chatId,
+          `✅ Expense logged!\n\n` +
+          `💰 ৳${Math.abs(parsed.amount).toFixed(2)} - ${parsed.category}\n` +
+          `💵 Balance: ৳${balance.toFixed(2)}`
+        );
+        return;
       }
 
-      // If still not valid, ignore
-      if (!nlpParser.isValid(parsed)) return;
+      const { data } = result;
 
-      const transaction = await this.createTransaction(user, parsed);
-      const balance = await this.calculateBalance(user._id);
+      // Check if valid transaction
+      if (!data.valid) {
+        return; // Silently ignore non-transaction messages
+      }
 
-      this.bot.sendMessage(chatId,
-        `✅ Quick expense logged!\n\n` +
-        `💰 $${parsed.amount.toFixed(2)} - ${parsed.category}\n` +
-        `💵 Balance: $${balance.toFixed(2)}`
-      );
+      const { transactions } = data;
+
+      if (transactions.length === 0) {
+        return; // Silently ignore if no transactions found
+      }
+
+      // If single transaction with high confidence, auto-save
+      if (transactions.length === 1) {
+        const t = transactions[0];
+
+        const transaction = await this.createTransaction(user, {
+          amount: Math.abs(t.amount),
+          type: t.type,
+          category: t.category,
+          description: t.description,
+          date: t.date === 'today' ? new Date() : new Date(t.date)
+        });
+
+        const balance = await this.calculateBalance(user._id);
+
+        const emoji = t.type === 'expense' ? '💸' : '💰';
+        const symbol = t.currency === 'BDT' ? '৳' : t.currency === 'USD' ? '$' : '₹';
+
+        this.bot.sendMessage(chatId,
+          `✅ Transaction saved!\n\n` +
+          `${emoji} ${symbol}${Math.abs(t.amount)} - ${t.description}\n` +
+          `📁 ${t.category}\n` +
+          `💵 Balance: ৳${balance.toFixed(2)}\n\n` +
+          `🤖 Powered by AI`
+        );
+
+        return;
+      }
+
+      // Multiple transactions - show confirmation
+      await this.showTransactionConfirmation(chatId, user._id, transactions);
+
     } catch (error) {
       logger.error('Error handling quick expense:', error);
+      // Silently fail for user experience
     }
   }
 
@@ -752,6 +817,7 @@ ${process.env.APP_URL}
 
       // Transcribe using AssemblyAI
       const transcriptionResult = await voiceTranscriptionService.transcribeAudio(tempFilePath);
+      console.log('Transcription Result:', transcriptionResult);
 
       // Clean up temp file
       await fs.unlink(tempFilePath).catch(() => {});
@@ -772,49 +838,109 @@ ${process.env.APP_URL}
       await this.bot.editMessageText(
         `🎤 Voice transcribed!\n\n` +
         `📝 _"${transcribedText}"_\n\n` +
-        `⏳ Processing transaction...`,
+        `🤖 AI is analyzing...`,
         { chat_id: chatId, message_id: processingMsg.message_id, parse_mode: 'Markdown' }
       );
 
-      // Parse the transcribed text
-      let parsed = nlpParser.parseQuickFormat(transcribedText);
+      // Get user's categories for better AI suggestions
+      const categories = await Category.find({ user: user._id });
 
-      // If not valid, try full NLP parse
-      if (!parsed || !nlpParser.isValid(parsed)) {
-        parsed = nlpParser.parse(transcribedText);
-      }
+      // Parse with Clarifai AI
+      const aiResult = await clarifaiService.parseTransaction(transcribedText, categories);
 
-      // If still not valid, send error
-      if (!nlpParser.isValid(parsed)) {
-        await this.bot.editMessageText(
-          `🎤 Voice transcribed!\n\n` +
-          `📝 _"${transcribedText}"_\n\n` +
-          `❌ Couldn't understand the expense format.\n\n` +
-          `💡 Try saying something like:\n` +
-          `• "Coffee 5"\n` +
-          `• "Spent 50 on groceries"\n` +
-          `• "Lunch 25 dollars"`,
-          { chat_id: chatId, message_id: processingMsg.message_id, parse_mode: 'Markdown' }
+      // Delete processing message
+      await this.bot.deleteMessage(chatId, processingMsg.message_id);
+
+      if (!aiResult.success) {
+        // Fallback to old parser
+        let parsed = nlpParser.parseQuickFormat(transcribedText);
+
+        // If not valid, try full NLP parse
+        if (!parsed || !nlpParser.isValid(parsed)) {
+          parsed = nlpParser.parse(transcribedText);
+        }
+
+        // If still not valid, send error
+        if (!nlpParser.isValid(parsed)) {
+          this.bot.sendMessage(chatId,
+            `🎤 Voice transcribed!\n\n` +
+            `📝 _"${transcribedText}"_\n\n` +
+            `❌ Couldn't understand the expense format.\n\n` +
+            `💡 Try saying something like:\n` +
+            `• "Coffee 5"\n` +
+            `• "Spent 50 on groceries"\n` +
+            `• "Lunch 25 dollars"`,
+            { parse_mode: 'Markdown' }
+          );
+          return;
+        }
+
+        // Create transaction using old parser result
+        const transaction = await this.createTransaction(user, parsed);
+        const balance = await this.calculateBalance(user._id);
+
+        // Send success message
+        this.bot.sendMessage(chatId,
+          `✅ Voice expense added!\n\n` +
+          `🎤 Transcribed: _"${transcribedText}"_\n\n` +
+          `💰 Amount: $${parsed.amount.toFixed(2)}\n` +
+          `📁 Category: ${parsed.category}\n` +
+          `📝 Note: ${parsed.description}\n\n` +
+          `💵 Current Balance: $${balance.toFixed(2)}`,
+          { parse_mode: 'Markdown' }
         );
+
+        logger.info(`Voice expense added via Telegram (fallback): ${user.email} - $${parsed.amount} (${transcriptionResult.audioSeconds}s audio)`);
         return;
       }
 
-      // Create transaction
-      const transaction = await this.createTransaction(user, parsed);
-      const balance = await this.calculateBalance(user._id);
+      // AI parsing succeeded
+      const { data } = aiResult;
 
-      // Send success message
-      await this.bot.editMessageText(
-        `✅ Voice expense added!\n\n` +
-        `🎤 Transcribed: _"${transcribedText}"_\n\n` +
-        `💰 Amount: $${parsed.amount.toFixed(2)}\n` +
-        `📁 Category: ${parsed.category}\n` +
-        `📝 Note: ${parsed.description}\n\n` +
-        `💵 Current Balance: $${balance.toFixed(2)}`,
-        { chat_id: chatId, message_id: processingMsg.message_id, parse_mode: 'Markdown' }
-      );
+      // Check if valid transaction
+      if (!data.valid) {
+        return; // Silently ignore non-transaction voice messages
+      }
 
-      logger.info(`Voice expense added via Telegram: ${user.email} - $${parsed.amount} (${transcriptionResult.audioSeconds}s audio)`);
+      const { transactions } = data;
+
+      if (transactions.length === 0) {
+        return; // Silently ignore if no transactions found
+      }
+
+      // If single transaction, auto-save
+      if (transactions.length === 1) {
+        const t = transactions[0];
+
+        const transaction = await this.createTransaction(user, {
+          amount: Math.abs(t.amount),
+          type: t.type,
+          category: t.category,
+          description: t.description,
+          date: t.date === 'today' ? new Date() : new Date(t.date)
+        });
+
+        const balance = await this.calculateBalance(user._id);
+
+        const emoji = t.type === 'expense' ? '💸' : '💰';
+        const symbol = t.currency === 'BDT' ? '৳' : t.currency === 'USD' ? '$' : '₹';
+
+        this.bot.sendMessage(chatId,
+          `✅ Voice transaction saved!\n\n` +
+          `🎤 _"${transcribedText}"_\n\n` +
+          `${emoji} ${symbol}${Math.abs(t.amount)} - ${t.description}\n` +
+          `📁 ${t.category}\n` +
+          `💵 Balance: ৳${balance.toFixed(2)}\n\n` +
+          `🤖 Powered by AI`,
+          { parse_mode: 'Markdown' }
+        );
+
+        logger.info(`Voice expense added via Telegram (AI): ${user.email} - ${symbol}${Math.abs(t.amount)} (${transcriptionResult.audioSeconds}s audio)`);
+        return;
+      }
+
+      // Multiple transactions - show confirmation
+      await this.showTransactionConfirmation(chatId, user._id, transactions);
 
     } catch (error) {
       logger.error('Error processing voice message:', error);
@@ -1219,6 +1345,117 @@ ${process.env.APP_URL}
     } catch (error) {
       logger.error('Error checking user budget:', error);
       return null;
+    }
+  }
+
+  /**
+   * Show transaction confirmation with buttons
+   */
+  async showTransactionConfirmation(chatId, userId, transactions) {
+    try {
+      // Create confirmation message
+      let confirmMsg = `✅ I found ${transactions.length} transaction(s):\n\n`;
+
+      transactions.forEach((t, index) => {
+        const emoji = t.type === 'expense' ? '💸' : '💰';
+        const symbol = t.currency === 'BDT' ? '৳' : t.currency === 'USD' ? '$' : '₹';
+
+        confirmMsg += `${index + 1}. ${emoji} ${symbol}${Math.abs(t.amount)} - ${t.description}\n`;
+        confirmMsg += `   📁 ${t.category}\n`;
+        confirmMsg += `   📅 ${t.date}\n\n`;
+      });
+
+      confirmMsg += `Do you want to save these transactions?`;
+
+      // Store for confirmation
+      const confirmId = `${chatId}_${Date.now()}`;
+      this.pendingTransactions.set(confirmId, {
+        userId,
+        transactions,
+        expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
+      });
+
+      // Send confirmation buttons
+      await this.bot.sendMessage(chatId, confirmMsg, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ Save All', callback_data: `save_all_${confirmId}` },
+            { text: '❌ Cancel', callback_data: `cancel_${confirmId}` }
+          ]]
+        }
+      });
+    } catch (error) {
+      logger.error('Error showing transaction confirmation:', error);
+    }
+  }
+
+  /**
+   * Handle callback queries (button clicks)
+   */
+  async handleCallbackQuery(query) {
+    const chatId = query.message.chat.id;
+    const data = query.data;
+
+    try {
+      if (data.startsWith('save_all_')) {
+        const confirmId = data.replace('save_all_', '');
+        const pending = this.pendingTransactions.get(confirmId);
+
+        if (!pending) {
+          await this.bot.answerCallbackQuery(query.id, { text: '❌ Transaction expired or not found' });
+          return;
+        }
+
+        if (pending.expiresAt < Date.now()) {
+          this.pendingTransactions.delete(confirmId);
+          await this.bot.answerCallbackQuery(query.id, { text: '❌ Transaction expired' });
+          return;
+        }
+
+        // Get user
+        const user = await User.findById(pending.userId);
+
+        // Save all transactions
+        const savedTransactions = [];
+        for (const t of pending.transactions) {
+          const transaction = await this.createTransaction(user, {
+            amount: Math.abs(t.amount),
+            type: t.type,
+            category: t.category,
+            description: t.description,
+            date: t.date === 'today' ? new Date() : new Date(t.date)
+          });
+          savedTransactions.push(transaction);
+        }
+
+        this.pendingTransactions.delete(confirmId);
+
+        const balance = await this.calculateBalance(user._id);
+
+        await this.bot.answerCallbackQuery(query.id, { text: '✅ Transactions saved!' });
+        await this.bot.editMessageText(
+          `✅ Successfully saved ${savedTransactions.length} transaction(s)!\n\n` +
+          `💵 Current Balance: ৳${balance.toFixed(2)}\n\n` +
+          `🤖 Powered by AI`,
+          {
+            chat_id: chatId,
+            message_id: query.message.message_id
+          }
+        );
+
+      } else if (data.startsWith('cancel_')) {
+        const confirmId = data.replace('cancel_', '');
+        this.pendingTransactions.delete(confirmId);
+
+        await this.bot.answerCallbackQuery(query.id, { text: 'Cancelled' });
+        await this.bot.editMessageText('❌ Cancelled. No transactions were saved.', {
+          chat_id: chatId,
+          message_id: query.message.message_id
+        });
+      }
+    } catch (error) {
+      logger.error('Error handling callback query:', error);
+      await this.bot.answerCallbackQuery(query.id, { text: '❌ An error occurred' });
     }
   }
 }

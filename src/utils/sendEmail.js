@@ -8,6 +8,17 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // Connection pooling for better performance
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100,
+  // Timeout settings for faster failure detection
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000, // 10 seconds
+  socketTimeout: 30000, // 30 seconds
+  // Enable debug for troubleshooting (disable in production)
+  debug: process.env.NODE_ENV === "development",
+  logger: process.env.NODE_ENV === "development",
 });
 
 /**
@@ -34,8 +45,11 @@ const testEmailConnection = async () => {
  * @param {string} html - Email HTML content
  */
 const sendEmail = async (to, subject, html) => {
+  const startTime = Date.now();
   try {
-    await transporter.sendMail({
+    console.log(`📧 Sending email to ${to}: "${subject}"`);
+
+    const info = await transporter.sendMail({
       from: `"Expense Tracker" <${process.env.EMAIL_USER}>`,
       to,
       subject,
@@ -47,8 +61,15 @@ const sendEmail = async (to, subject, html) => {
         'Importance': 'high'
       }
     });
+
+    const duration = Date.now() - startTime;
+    console.log(`✅ Email sent successfully in ${duration}ms`);
+    console.log(`📨 Message ID: ${info.messageId}`);
+
+    return info;
   } catch (error) {
-    console.error("Error sending email:", error);
+    const duration = Date.now() - startTime;
+    console.error(`❌ Error sending email after ${duration}ms:`, error.message);
     throw new Error("Failed to send email");
   }
 };

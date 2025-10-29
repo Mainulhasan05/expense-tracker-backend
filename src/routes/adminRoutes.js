@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require("multer");
 const adminController = require("../controllers/adminController");
 const assemblyAIController = require("../controllers/assemblyAIController");
+const clarifaiController = require("../controllers/clarifaiController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 const { uploadLimiter } = require("../middlewares/rateLimitMiddleware");
@@ -51,5 +52,14 @@ router.post(
   upload.single("audio"),
   assemblyAIController.testTranscription
 );
+
+// Clarifai AI account management
+router.get("/clarifai/accounts", clarifaiController.getAllAccounts);
+router.post("/clarifai/accounts", clarifaiController.addAccount);
+router.put("/clarifai/accounts/:id", clarifaiController.updateAccount);
+router.delete("/clarifai/accounts/:id", clarifaiController.deleteAccount);
+router.post("/clarifai/test/:id", clarifaiController.testAccount);
+router.get("/clarifai/usage-stats", clarifaiController.getUsageStats);
+router.post("/clarifai/test-parsing", clarifaiController.testParsing);
 
 module.exports = router;

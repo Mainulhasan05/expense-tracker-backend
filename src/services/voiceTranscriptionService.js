@@ -36,17 +36,34 @@ class VoiceTranscriptionService {
 
   /**
    * Create transcription request
+   * Supports automatic language detection for better multilingual support
    */
   async createTranscription(audioUrl, apiKey, options = {}) {
+    // Language detection is enabled when no language is specified
+    // This helps with Bengali, Bangla, and mixed language audio
+    const transcriptionConfig = {
+      audio_url: audioUrl,
+      punctuate: true,
+      format_text: true,
+      ...options,
+    };
+
+    // If no language specified, use automatic detection
+    // This works better for multilingual users (English, Bengali, Banglish mix)
+    if (!options.language && !options.language_code) {
+      // Use language detection
+      transcriptionConfig.language_detection = true;
+    } else {
+      // Use specified language
+      transcriptionConfig.language_code = options.language || options.language_code || "en";
+    }
+
+    // Supported languages: en (English), bn (Bengali), hi (Hindi), etc.
+    // Note: AssemblyAI has limited Bengali support, so language detection helps
+
     const response = await axios.post(
       "https://api.assemblyai.com/v2/transcript",
-      {
-        audio_url: audioUrl,
-        language_code: options.language || "en",
-        punctuate: true,
-        format_text: true,
-        ...options,
-      },
+      transcriptionConfig,
       {
         headers: {
           authorization: apiKey,
