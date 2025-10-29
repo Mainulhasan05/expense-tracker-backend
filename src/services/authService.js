@@ -72,7 +72,7 @@ exports.register = async (name, email, password) => {
   await user.save();
 
   // Send verification email
-  const verificationUrl = `${process.env.APP_URL}/verify-email/${verificationToken}`;
+  const verificationUrl = `${process.env.FRONTEND_URL || process.env.APP_URL}/verify-email/${verificationToken}`;
   const html = `
     <!DOCTYPE html>
     <html>
@@ -152,9 +152,58 @@ exports.forgotPassword = async (email) => {
   await user.save();
 
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-  const html = `<p>You requested a password reset</p><a href="${resetUrl}">Reset Password</a>`;
 
-  await sendEmail(user.email, "Password Reset", html);
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; }
+        .button { display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }
+        .info-box { background: #fff3cd; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #ffc107; }
+        .footer { background: #333; color: white; padding: 20px; text-align: center; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔐 Password Reset Request</h1>
+        </div>
+        <div class="content">
+          <p>Hello ${user.name},</p>
+          <p>We received a request to reset your password for your Expense Tracker account.</p>
+          <p style="text-align: center;">
+            <a href="${resetUrl}" class="button">Reset Password</a>
+          </p>
+          <p>Or copy and paste this link into your browser:</p>
+          <p style="background: #f8f9fa; padding: 15px; border-radius: 5px; word-break: break-all; font-size: 12px;">
+            ${resetUrl}
+          </p>
+          <div class="info-box">
+            <p><strong>⏰ Important:</strong> This link will expire in <strong>15 minutes</strong> for security reasons.</p>
+          </div>
+          <p>If you didn't request a password reset, please ignore this email. Your password will remain unchanged.</p>
+          <p style="margin-top: 30px; color: #666;">
+            Best regards,<br>
+            <strong>Expense Tracker Team</strong>
+          </p>
+        </div>
+        <div class="footer">
+          <p>This is an automated email from Expense Tracker App</p>
+          <p>If you have any questions, please contact support</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Send email asynchronously (non-blocking)
+  sendEmail(user.email, "🔐 Password Reset Request - Expense Tracker", html).catch((error) => {
+    console.error("Failed to send password reset email:", error);
+  });
 };
 
 
@@ -214,7 +263,7 @@ exports.resendVerificationEmail = async (email) => {
   await user.save();
 
   // Send verification email
-  const verificationUrl = `${process.env.APP_URL}/verify-email/${verificationToken}`;
+  const verificationUrl = `${process.env.FRONTEND_URL || process.env.APP_URL}/verify-email/${verificationToken}`;
   const html = `
     <!DOCTYPE html>
     <html>
@@ -336,7 +385,7 @@ exports.setPasswordsForGoogleUsers = async () => {
                 <li>Password: (shown above)</li>
               </ul>
 
-              <p>You can login at: <a href="${process.env.APP_URL}/login">${process.env.APP_URL}/login</a></p>
+              <p>You can login at: <a href="${process.env.FRONTEND_URL || process.env.APP_URL}/login">${process.env.FRONTEND_URL || process.env.APP_URL}/login</a></p>
 
               <p>If you didn't request this, please contact support immediately.</p>
             </div>

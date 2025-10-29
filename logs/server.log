@@ -230,3 +230,42 @@
 {"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-28T15:59:12.117Z"}
 {"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-28T15:59:12.253Z"}
 {"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-28T15:59:12.998Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T05:31:08.088Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T05:31:08.990Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T05:31:10.129Z"}
+{"level":"info","message":"✅ Telegram scheduled notifications set up successfully","timestamp":"2025-10-29T05:31:11.133Z"}
+{"level":"info","message":"✅ Telegram bot initialized successfully","timestamp":"2025-10-29T05:31:11.134Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T05:36:35.590Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T05:36:36.818Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T05:36:37.892Z"}
+{"level":"info","message":"✅ Telegram scheduled notifications set up successfully","timestamp":"2025-10-29T05:36:38.260Z"}
+{"level":"info","message":"✅ Telegram bot initialized successfully","timestamp":"2025-10-29T05:36:38.260Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T06:01:36.453Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T06:01:37.424Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T06:01:38.526Z"}
+{"level":"info","message":"✅ Telegram scheduled notifications set up successfully","timestamp":"2025-10-29T06:01:38.896Z"}
+{"level":"info","message":"✅ Telegram bot initialized successfully","timestamp":"2025-10-29T06:01:38.898Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T06:02:16.435Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T06:02:17.708Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T06:02:18.751Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T06:02:22.782Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T06:02:23.744Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T06:02:24.740Z"}
+{"level":"info","message":"✅ Telegram scheduled notifications set up successfully","timestamp":"2025-10-29T06:02:30.208Z"}
+{"level":"info","message":"✅ Telegram bot initialized successfully","timestamp":"2025-10-29T06:02:30.209Z"}
+{"level":"info","message":"Telegram account linked: mdrifatbd5@gmail.com -> 1166388491","timestamp":"2025-10-29T06:16:47.291Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T06:42:07.052Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T06:42:08.205Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T06:42:09.498Z"}
+{"level":"info","message":"✅ Telegram scheduled notifications set up successfully","timestamp":"2025-10-29T06:42:09.690Z"}
+{"level":"info","message":"✅ Telegram bot initialized successfully","timestamp":"2025-10-29T06:42:09.692Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T06:43:34.887Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T06:43:36.001Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T06:43:37.221Z"}
+{"level":"info","message":"✅ Telegram scheduled notifications set up successfully","timestamp":"2025-10-29T06:43:42.471Z"}
+{"level":"info","message":"✅ Telegram bot initialized successfully","timestamp":"2025-10-29T06:43:42.473Z"}
+{"level":"info","message":"Monthly report cron job setup complete","timestamp":"2025-10-29T06:48:33.202Z"}
+{"level":"info","message":"Server running on port http://localhost:8000","timestamp":"2025-10-29T06:48:34.501Z"}
+{"level":"info","message":"MongoDB connected successfully","timestamp":"2025-10-29T06:48:35.626Z"}
+{"level":"info","message":"✅ Telegram scheduled notifications set up successfully","timestamp":"2025-10-29T06:48:40.942Z"}
+{"level":"info","message":"✅ Telegram bot initialized successfully","timestamp":"2025-10-29T06:48:40.942Z"}

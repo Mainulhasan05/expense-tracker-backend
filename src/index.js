@@ -15,6 +15,9 @@ const emailService = new EmailReportService();
 emailService.setupMonthlyCronJob();
 // emailService.setup30MinCronJob();
 
+// Initialize Telegram bot (already exported as instance)
+const telegramBot = require("./services/telegramBot");
+
 const app = express();
 connectDB();
 
@@ -31,6 +34,7 @@ app.use("/api/transactions", require("./routes/transactionRoutes"));
 app.use("/api/tasks", require("./routes/taskRoutes"));
 app.use("/api/categories", require("./routes/categoryRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
+app.use("/api/telegram", require("./routes/telegramRoutes"));
 app.get("/",()=>{
 return "Hello from Finance"
 })
@@ -50,6 +54,13 @@ app.listen(process.env.PORT || 5000, async () => {
     console.log("✅ Email service is ready to use!\n");
   }
 
+  // Initialize Telegram bot
+  console.log("🔍 Initializing Telegram bot...");
+  await telegramBot.initialize();
+
   // To manually send a test email, you can call:
   // await sendTestEmail("recipient@example.com");
 });
+
+// Export telegram bot instance for use in other modules
+module.exports = { telegramBot };

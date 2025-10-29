@@ -15,6 +15,22 @@ const userSchema = new mongoose.Schema(
     resetPasswordToken: String,
     resetPasswordExpire: Date,
 
+    // Telegram Integration
+    telegramId: { type: String, unique: true, sparse: true },
+    telegramUsername: { type: String },
+    telegramFirstName: { type: String },
+    telegramLinkedAt: { type: Date },
+    telegramLinkCode: { type: String },
+    telegramLinkCodeExpiry: { type: Date },
+    telegramNotifications: {
+      enabled: { type: Boolean, default: true },
+      dailySummary: { type: Boolean, default: true },
+      dailySummaryTime: { type: String, default: "20:00" }, // 8 PM
+      weeklyReport: { type: Boolean, default: true },
+      budgetAlerts: { type: Boolean, default: true },
+      expenseAdded: { type: Boolean, default: false }
+    },
+
     role: { type: String, default: "user" },
   },
   { timestamps: true }
