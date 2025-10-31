@@ -1,9 +1,10 @@
 const ClarifaiAccount = require("../models/ClarifaiAccount");
 const logger = require("../config/logger");
+const OpenAI = require("openai");
 
 class ClarifaiService {
   constructor() {
-    this.baseUrl = "https://api.clarifai.com/v2/models";
+    this.baseUrl = "https://api.clarifai.com/v2/ext/openai/v1";
   }
 
   /**
@@ -74,46 +75,41 @@ RETURN ONLY JSON:`;
   }
 
   /**
-   * Call Clarifai API with a message
+   * Call Clarifai API with a message using OpenAI-compatible endpoint
    */
   async callClarifai(account, prompt) {
-    const raw = JSON.stringify({
-      user_app_id: {
-        user_id: account.userId,
-        app_id: account.appId,
-      },
-      inputs: [
-        {
-          data: {
-            text: {
-              raw: prompt,
-            },
-          },
-        },
-      ],
-    });
-
-    const requestOptions = {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Key ${account.pat}`,
-        "Content-Type": "application/json",
-      },
-      body: raw,
-    };
-
-    const url = `${this.baseUrl}/${account.modelId}/versions/${account.modelVersionId}/outputs`;
-
     try {
-      const response = await fetch(url, requestOptions);
-      const data = await response.json();
+      logger.info(`Using Clarifai account: ${account.name}`);
 
-      if (data.status.code !== 10000) {
-        throw new Error(data.status.description || "Clarifai API error");
-      }
+      // Create OpenAI client with Clarifai base URL
+      const client = new OpenAI({
+        baseURL: this.baseUrl,
+        apiKey: account.pat,
+      });
 
-      const rawText = data.outputs[0]?.data?.text?.raw;
+      // Use stable model URL if available, otherwise construct from account details
+      const modelUrl = account.modelUrl ||
+        `https://clarifai.com/${account.userId}/${account.appId}/models/${account.modelId}`;
+
+      logger.info(`Using model URL: ${modelUrl}`);
+
+      // Call Clarifai using OpenAI-compatible API
+      const response = await client.chat.completions.create({
+        model: modelUrl,
+        messages: [
+          {
+            role: "system",
+            content: "You are a financial transaction parser. Return ONLY valid JSON responses."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.3, // Lower temperature for more consistent JSON output
+      });
+
+      const rawText = response.choices[0]?.message?.content;
       if (!rawText) {
         throw new Error("No response from AI");
       }

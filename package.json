@@ -12,7 +12,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.21.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@speechmatics/batch-client": "^5.1.0",
     "axios": "^1.13.1",
     "bcrypt": "^6.0.0",
     "compromise": "^14.14.4",
@@ -31,6 +33,7 @@
     "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.66.0",
     "nodemailer": "^7.0.5",
+    "openai": "^6.7.0",
     "tesseract.js": "^6.0.1",
     "winston": "^3.17.0",
     "ws": "^8.18.3"

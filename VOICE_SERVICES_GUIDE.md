@@ -25,7 +25,8 @@ Voice Message (Telegram/Upload)
        ▼
 [Voice Service - Priority Selection]
        │
-       ├─→ [Speechmatics Account 1] (Priority 10) ← Primary
+       ├─→ [Speechmatics SDK] (Priority 10) ← Primary
+       │   └─→ BatchClient.transcribe()
        ├─→ [Speechmatics Account 2] (Priority 10)
        └─→ [Speechmatics Account 3] (Priority 8)
        │
@@ -37,7 +38,24 @@ Voice Message (Telegram/Upload)
        │
        ▼
 [Transaction Saved to Database]
+
+Text-to-Speech Flow:
+Text → [ElevenLabs SDK] → textToSpeech.convert() → Audio Buffer
 ```
+
+## Official SDKs
+
+This integration uses the official SDKs from both providers:
+
+- **@speechmatics/batch-client** - Official Speechmatics Node.js SDK
+- **@elevenlabs/elevenlabs-js** - Official ElevenLabs Node.js SDK
+
+### Benefits of Using Official SDKs:
+- ✅ Automatic job polling and status updates
+- ✅ Built-in error handling and retries
+- ✅ Type safety and better documentation
+- ✅ Simplified API interaction
+- ✅ Maintained by the service providers
 
 ## Setup Instructions
 
@@ -219,6 +237,10 @@ const result = await voiceService.transcribeAudio('/path/to/audio.mp3');
 console.log(result.text); // "আমার খরচ ৫০০ টাকা"
 console.log(result.provider); // "speechmatics"
 console.log(result.language); // "bn"
+
+// Behind the scenes (using Speechmatics SDK):
+// const client = new BatchClient({ apiKey, appId });
+// const audio = await client.transcribe(file, config, "json-v2");
 ```
 
 ### Generate Speech (TTS)
@@ -227,7 +249,13 @@ console.log(result.language); // "bn"
 const voiceService = require('./services/voiceService');
 
 const result = await voiceService.generateSpeech('আপনার খরচ সংরক্ষিত হয়েছে');
-// Returns audio buffer that can be played or saved
+console.log(result.audioBuffer); // Buffer containing MP3 audio
+console.log(result.characters); // 31
+console.log(result.provider); // "elevenlabs"
+
+// Behind the scenes (using ElevenLabs SDK):
+// const elevenlabs = new ElevenLabsClient({ apiKey });
+// const audio = await elevenlabs.textToSpeech.convert(voiceId, { text, model_id });
 ```
 
 ### Telegram Bot Integration

@@ -33,8 +33,13 @@ const clarifaiAccountSchema = new mongoose.Schema(
     },
     modelVersionId: {
       type: String,
-      required: true,
-      default: "b3c129d719144dd49f4cb8cb96585223",
+      required: false, // No longer needed with OpenAI API
+      trim: true,
+    },
+    modelUrl: {
+      // URL-based model identifier (e.g., https://clarifai.com/openai/chat-completion/models/gpt-oss-120b)
+      type: String,
+      required: false,
       trim: true,
     },
     isActive: {
