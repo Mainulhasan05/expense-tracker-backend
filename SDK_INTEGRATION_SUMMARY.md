@@ -151,6 +151,105 @@ const voices = await elevenlabs.voices.getAll();
 return voices.voices || voices;
 ```
 
+#### Clarifai Integration (OpenAI-Compatible API)
+
+**Before (Version-based API):**
+```javascript
+const url = `${this.baseUrl}/${account.modelId}/versions/${account.modelVersionId}/outputs`;
+
+const raw = JSON.stringify({
+  user_app_id: {
+    user_id: account.userId,
+    app_id: account.appId,
+  },
+  inputs: [
+    {
+      data: {
+        text: {
+          raw: prompt,
+        },
+      },
+    },
+  ],
+});
+
+const response = await fetch(url, {
+  method: "POST",
+  headers: {
+    Authorization: `Key ${account.pat}`,
+    "Content-Type": "application/json",
+  },
+  body: raw,
+});
+
+const rawText = response.data.outputs[0]?.data?.text?.raw;
+```
+
+**After (Using OpenAI SDK with Clarifai):**
+```javascript
+const OpenAI = require("openai");
+
+// Create OpenAI client with Clarifai base URL
+const client = new OpenAI({
+  baseURL: "https://api.clarifai.com/v2/ext/openai/v1",
+  apiKey: account.pat,
+});
+
+// Use stable model URL (no version IDs that expire)
+const modelUrl = account.modelUrl ||
+  `https://clarifai.com/${account.userId}/${account.appId}/models/${account.modelId}`;
+
+// Call using OpenAI chat completions format
+const response = await client.chat.completions.create({
+  model: modelUrl,
+  messages: [
+    {
+      role: "system",
+      content: "You are a financial transaction parser. Return ONLY valid JSON responses."
+    },
+    {
+      role: "user",
+      content: prompt
+    }
+  ],
+  temperature: 0.3, // Consistent JSON output
+});
+
+const rawText = response.choices[0]?.message?.content;
+```
+
+**Benefits:**
+- ✅ No more changing version IDs (uses stable model URLs)
+- ✅ Official OpenAI SDK compatibility
+- ✅ Better error handling and retries
+- ✅ Temperature control for consistent output
+- ✅ Chat completions format with system/user messages
+- ✅ Future-proof (URLs don't expire)
+
+### 5. Clarifai Model URLs
+
+**New Feature**: Added `modelUrl` field to ClarifaiAccount model:
+
+```javascript
+modelUrl: {
+  type: String,
+  required: false,
+  trim: true,
+}
+```
+
+**Stable URL Format:**
+```
+https://clarifai.com/{userId}/{appId}/models/{modelId}
+```
+
+**Example:**
+```
+https://clarifai.com/openai/chat-completion/models/gpt-oss-120b
+```
+
+This eliminates the need for `modelVersionId` which changes over time.
+
 ## File Changes
 
 ### Modified Files
@@ -163,16 +262,37 @@ return voices.voices || voices;
    - Updated `testApiKey()` to use SDKs
    - Updated `getAvailableVoices()` to use SDK
 
-2. **package.json**
-   - Added `@speechmatics/batch-client`
-   - Added `elevenlabs` (uses `@elevenlabs/elevenlabs-js` internally)
+2. **src/services/clarifaiService.js**
+   - Added OpenAI SDK import
+   - Refactored `callClarifai()` to use OpenAI client
+   - Changed from version-based API to OpenAI-compatible API
+   - Added stable model URL support
+   - Improved with temperature control and system messages
 
-3. **VOICE_SERVICES_GUIDE.md**
+3. **src/models/ClarifaiAccount.js**
+   - Added `modelUrl` field for stable URLs
+   - Made `modelVersionId` optional
+
+4. **package.json**
+   - Added `@speechmatics/batch-client`
+   - Added `@elevenlabs/elevenlabs-js`
+   - Added `openai`
+
+5. **VOICE_SERVICES_GUIDE.md**
    - Updated architecture diagrams
    - Added SDK benefits section
    - Updated code examples
 
-4. **SDK_INTEGRATION_SUMMARY.md** (this file)
+6. **CLARIFAI_OPENAI_MIGRATION.md**
+   - Created comprehensive Clarifai migration guide
+   - Documented model URL format
+   - Added migration scripts and examples
+
+7. **scripts/update-clarifai-urls.js**
+   - Created migration script for existing accounts
+   - Automatically generates stable model URLs
+
+8. **SDK_INTEGRATION_SUMMARY.md** (this file)
    - Created comprehensive migration summary
 
 ## Testing
@@ -198,6 +318,23 @@ const voiceService = require('./src/services/voiceService');
 const result = await voiceService.generateSpeech('আপনার খরচ সংরক্ষিত হয়েছে');
 ```
 
+### Test Clarifai
+
+```bash
+# Update existing accounts to use stable URLs
+node scripts/update-clarifai-urls.js
+
+# Test via API
+curl -X POST http://localhost:8000/api/admin/clarifai/test-parsing \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "I spent 500 taka on lunch"}'
+
+# Test programmatically
+const clarifaiService = require('./src/services/clarifaiService');
+const result = await clarifaiService.parseTransaction('আজকে ৫০০ টাকা বাজার করেছি');
+```
+
 ### Test via Admin UI
 
 1. Navigate to `/dashboard/admin/voice-services`
@@ -211,13 +348,14 @@ const result = await voiceService.generateSpeech('আপনার খরচ স�
 
 | Feature | Before | After |
 |---------|--------|-------|
-| **Code Complexity** | High (manual polling, form data) | Low (SDK handles it) |
+| **Code Complexity** | High (manual polling, form data, version IDs) | Low (SDK handles it) |
 | **Error Handling** | Manual | Built-in SDK handling |
 | **Maintainability** | Hard to update | Easy (SDK updates) |
 | **Type Safety** | None | Available with TypeScript |
 | **Documentation** | Custom implementation | Official SDK docs |
 | **Job Polling** | Manual 60-iteration loop | Automatic (SDK) |
 | **Stream Handling** | Simple buffer | Proper async iteration |
+| **Clarifai Stability** | Version IDs change frequently | Stable URLs never expire |
 
 ### Performance
 

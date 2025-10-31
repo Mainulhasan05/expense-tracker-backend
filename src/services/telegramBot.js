@@ -119,22 +119,33 @@ class TelegramBotService {
     if (user) {
       this.bot.sendMessage(chatId,
         `👋 Welcome back, ${user.name}!\n\n` +
-        `Your account is already linked.\n\n` +
-        `💡 Quick tips:\n` +
-        `• Just type: "coffee 5" to add expense\n` +
-        `• Use /balance to check your balance\n` +
-        `• Use /help to see all commands`
+        `🧠 *AI-Powered Features:*\n` +
+        `Just type naturally - no commands needed!\n\n` +
+        `💬 Try saying:\n` +
+        `• "I spent 500 taka on lunch"\n` +
+        `• "আজকে ৫০০ টাকা বাজার করেছি"\n` +
+        `• "lunch 250tk and coffee 80tk"\n\n` +
+        `📸 Also supports:\n` +
+        `• Voice messages (Bengali/English)\n` +
+        `• Receipt photos\n\n` +
+        `📊 Commands: /balance | /recent | /help`,
+        { parse_mode: 'Markdown' }
       );
     } else {
       this.bot.sendMessage(chatId,
-        `🤖 Welcome to Expense Tracker Bot!\n\n` +
-        `To start tracking expenses, you need to link your account.\n\n` +
-        `📱 Steps to link:\n` +
+        `🤖 *Welcome to AI Expense Tracker!*\n\n` +
+        `🌟 Features:\n` +
+        `✅ Natural language (English & Bengali)\n` +
+        `✅ Voice message transcription\n` +
+        `✅ Receipt photo scanning\n` +
+        `✅ AI-powered transaction parsing\n\n` +
+        `📱 *Link Your Account:*\n` +
         `1. Go to your dashboard settings\n` +
-        `2. Find the "Link Telegram" section\n` +
-        `3. Click "Generate Link Code"\n` +
-        `4. Come back and type: /link YOUR_CODE\n\n` +
-        `❓ Need help? Type /help`
+        `2. Find "Link Telegram" section\n` +
+        `3. Generate link code\n` +
+        `4. Type: /link YOUR_CODE\n\n` +
+        `❓ Type /help for examples`,
+        { parse_mode: 'Markdown' }
       );
     }
   }
@@ -164,14 +175,19 @@ class TelegramBotService {
       }
 
       this.bot.sendMessage(chatId,
-        `✅ Account linked successfully!\n\n` +
+        `✅ *Account linked successfully!*\n\n` +
         `Welcome, ${result.user.name}! 🎉\n\n` +
-        `You can now:\n` +
-        `• Add expenses: Just type "coffee 5"\n` +
-        `• Check balance: /balance\n` +
-        `• View recent: /recent\n` +
-        `• Get reports: /report\n\n` +
-        `Type /help for all commands.`
+        `🧠 *Try AI Features Now:*\n` +
+        `Just type naturally (no /add needed!):\n\n` +
+        `💬 English:\n` +
+        `• "I spent 500 taka on lunch"\n` +
+        `• "received salary 50000"\n\n` +
+        `🇧🇩 Bengali:\n` +
+        `• "আজকে ৫০০ টাকা বাজার করেছি"\n\n` +
+        `📊 Quick Commands:\n` +
+        `/balance | /recent | /report | /help\n\n` +
+        `🤖 AI understands both English & Bengali!`,
+        { parse_mode: 'Markdown' }
       );
 
       logger.info(`Telegram account linked: ${result.user.email} -> ${telegramData.id}`);
@@ -199,10 +215,13 @@ class TelegramBotService {
       if (!nlpParser.isValid(parsed)) {
         this.bot.sendMessage(chatId,
           `❌ Couldn't understand the expense.\n\n` +
-          `Examples:\n` +
-          `• /add 50 groceries\n` +
-          `• /add spent 45.50 on lunch\n` +
-          `• /add coffee 5`
+          `💡 *Pro Tip:* You don't need /add anymore!\n` +
+          `Just type naturally:\n\n` +
+          `✅ "I spent 500 taka on lunch"\n` +
+          `✅ "আজকে ৫০০ টাকা বাজার করেছি"\n` +
+          `✅ "lunch 250tk and coffee 80tk"\n\n` +
+          `🤖 AI will understand and save it automatically!`,
+          { parse_mode: 'Markdown' }
         );
         return;
       }
@@ -219,7 +238,8 @@ class TelegramBotService {
         `💰 Amount: $${parsed.amount.toFixed(2)}\n` +
         `📁 Category: ${parsed.category}\n` +
         `📝 Note: ${parsed.description}\n\n` +
-        `💵 Current Balance: $${balance.toFixed(2)}`
+        `💵 Current Balance: $${balance.toFixed(2)}\n\n` +
+        `💡 *Tip:* Next time, just type "lunch 500 taka" - no /add needed! 🚀`
       );
     } catch (error) {
       logger.error('Error adding expense:', error);
@@ -556,36 +576,41 @@ class TelegramBotService {
     const chatId = msg.chat.id;
 
     const help = `
-🤖 *Expense Tracker Bot Help*
+🤖 *Expense Tracker Bot - AI Powered*
 
-*💰 Adding Transactions:*
-/add <amount> <category> - Add expense
-/income <amount> <category> - Add income
-Just type: "coffee 5" - Quick expense
+*🚀 Smart Features (NEW!)*
+Just type naturally - AI understands! 🧠
 
-*📊 Reports & Analytics:*
+*💬 English Examples:*
+• "I spent 500 taka on lunch"
+• "lunch 250tk and coffee 80tk"
+• "received salary 50000"
+• "groceries 450"
+
+*🇧🇩 Bengali Support:*
+• "আজকে ৫০০ টাকা বাজার করেছি"
+• "লাঞ্চে ২৫০ টাকা খরচ"
+• "বেতন ৫০০০০ টাকা পেয়েছি"
+
+*📊 Commands:*
 /balance - Current balance
 /recent - Last 5 transactions
 /report - Monthly report
 /categories - Category breakdown
-
-*⚙️ Settings:*
 /settings - View settings
-/unlink - Unlink account
 
-*💡 Examples:*
-• /add 50 groceries
-• /add spent 45.50 on lunch
-• /income 2000 salary
-• coffee 5
-• groceries 45
+*💡 Traditional Format (Still works):*
+/add 50 groceries
+/income 2000 salary
 
-*📸 Other Features:*
-• Send receipt photo - Auto extract
-• Send voice message - Auto transcribe
+*📸 More Features:*
+• 📷 Send receipt photo - Auto extract
+• 🎤 Send voice message - Auto transcribe
+• 🌍 Works in English & Bengali
 
-Need more help? Visit:
-${process.env.APP_URL}
+*🤖 AI Powered by Clarifai*
+
+Need help? Visit: ${process.env.APP_URL}
     `;
 
     this.bot.sendMessage(chatId, help.trim(), { parse_mode: 'Markdown' });
