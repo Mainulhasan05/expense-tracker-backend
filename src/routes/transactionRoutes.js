@@ -10,6 +10,7 @@ router.use(transactionLimiter);
 router.post("/add", authMiddleware, transactionController.addTransaction);
 router.get("/search", authMiddleware, transactionController.searchTransactions);
 router.get("/:month", authMiddleware, transactionController.getTransactions);
+router.put("/:id", authMiddleware, transactionController.updateTransaction);
 router.delete("/:id", authMiddleware, transactionController.deleteTransaction);
 
 module.exports = router;

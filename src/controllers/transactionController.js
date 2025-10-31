@@ -25,6 +25,22 @@ exports.getTransactions = async (req, res) => {
   }
 };
 
+// updateTransaction controller
+exports.updateTransaction = async (req, res) => {
+  try {
+    const transaction = await transactionService.updateTransaction(
+      req.user.id,
+      req.params.id,
+      req.body
+    );
+    res
+      .status(200)
+      .json({ success: true, message: "Transaction updated successfully", transaction });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 // deleteTransaction controller
 exports.deleteTransaction = async (req, res) => {
   try {

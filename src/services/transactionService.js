@@ -54,6 +54,42 @@ exports.getUserTransactions = async (userId, month, page = 1) => {
   };
 };
 
+exports.updateTransaction = async (userId, transactionId, updateData) => {
+  // Find the transaction and verify ownership
+  const transaction = await Transaction.findOne({
+    _id: transactionId,
+    user: userId,
+  });
+
+  if (!transaction) {
+    throw new Error("Transaction not found or unauthorized");
+  }
+
+  // If category is being updated, validate it
+  if (updateData.category) {
+    const category = await Category.findOne({
+      name: updateData.category,
+      user: userId,
+    });
+
+    if (!category) {
+      throw new Error("Category not found");
+    }
+
+    // Update type based on category
+    updateData.type = category.type;
+  }
+
+  // Update the transaction
+  const updatedTransaction = await Transaction.findByIdAndUpdate(
+    transactionId,
+    updateData,
+    { new: true, runValidators: true }
+  );
+
+  return updatedTransaction;
+};
+
 exports.deleteTransaction = async (userId, transactionId) => {
   const transaction = await Transaction.findOne({
     _id: transactionId,
