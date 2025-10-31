@@ -11,7 +11,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const telegramService = require('./telegramService');
 const cron = require('node-cron');
-const voiceTranscriptionService = require('./voiceTranscriptionService');
+const voiceService = require('./voiceService');
 const clarifaiService = require('./clarifaiService');
 
 class TelegramBotService {
@@ -815,8 +815,8 @@ ${process.env.APP_URL}
       const tempFilePath = path.join(tempDir, `voice_${Date.now()}.ogg`);
       await fs.writeFile(tempFilePath, audioBuffer);
 
-      // Transcribe using AssemblyAI
-      const transcriptionResult = await voiceTranscriptionService.transcribeAudio(tempFilePath);
+      // Transcribe using Speechmatics (with Bangla support)
+      const transcriptionResult = await voiceService.transcribeAudio(tempFilePath);
       
 
       // Clean up temp file

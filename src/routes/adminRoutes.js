@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const adminController = require("../controllers/adminController");
-const assemblyAIController = require("../controllers/assemblyAIController");
+const voiceServiceController = require("../controllers/voiceServiceController");
 const clarifaiController = require("../controllers/clarifaiController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
@@ -41,17 +41,20 @@ router.delete("/users/:id", adminController.deleteUser);
 // Activity logs
 router.get("/activity", adminController.getActivityLogs);
 
-// AssemblyAI account management
-router.get("/assemblyai/accounts", assemblyAIController.getAllAccounts);
-router.post("/assemblyai/accounts", assemblyAIController.addAccount);
-router.put("/assemblyai/accounts/:id", assemblyAIController.updateAccount);
-router.delete("/assemblyai/accounts/:id", assemblyAIController.deleteAccount);
+// Voice Service account management (Speechmatics & ElevenLabs)
+router.get("/voice/accounts", voiceServiceController.getAllAccounts);
+router.post("/voice/accounts", voiceServiceController.addAccount);
+router.put("/voice/accounts/:id", voiceServiceController.updateAccount);
+router.delete("/voice/accounts/:id", voiceServiceController.deleteAccount);
+router.get("/voice/stats", voiceServiceController.getStats);
+router.get("/voice/accounts/:id/voices", voiceServiceController.getVoices);
 router.post(
-  "/assemblyai/test",
+  "/voice/test/transcription",
   uploadLimiter,
   upload.single("audio"),
-  assemblyAIController.testTranscription
+  voiceServiceController.testTranscription
 );
+router.post("/voice/test/tts", voiceServiceController.testTTS);
 
 // Clarifai AI account management
 router.get("/clarifai/accounts", clarifaiController.getAllAccounts);
