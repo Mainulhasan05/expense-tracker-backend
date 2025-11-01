@@ -474,21 +474,26 @@ class TelegramBotService {
 
       // Add date filter
       const now = new Date();
+      let periodLabel = '';
       if (period === 'last_month') {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
         query.date = { $gte: lastMonth, $lte: endOfLastMonth };
+        periodLabel = lastMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
       } else if (period === 'this_month') {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         query.date = { $gte: startOfMonth };
+        periodLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
       } else if (period === 'today') {
         const startOfDay = new Date(now.setHours(0, 0, 0, 0));
         query.date = { $gte: startOfDay };
+        periodLabel = 'Today';
       } else if (period === 'this_week') {
         const startOfWeek = new Date(now);
         startOfWeek.setDate(now.getDate() - now.getDay());
         startOfWeek.setHours(0, 0, 0, 0);
         query.date = { $gte: startOfWeek };
+        periodLabel = 'This Week';
       }
 
       // Add type filter
@@ -501,12 +506,10 @@ class TelegramBotService {
         query.category = new RegExp(category, 'i');
       }
 
-      // Fetch transactions
-      const transactions = await Transaction.find(query)
-        .sort({ date: -1 })
-        .limit(limit || 10);
+      // Fetch ALL transactions for accurate totals (not limited)
+      const allTransactions = await Transaction.find(query);
 
-      if (transactions.length === 0) {
+      if (allTransactions.length === 0) {
         const periodText = this.getPeriodText(period);
         this.bot.sendMessage(chatId,
           `📊 No ${type || 'transactions'} found ${periodText}.\n\n` +
@@ -515,40 +518,61 @@ class TelegramBotService {
         return;
       }
 
-      // Calculate totals
-      const totalIncome = transactions
+      // Calculate totals from ALL transactions
+      const totalIncome = allTransactions
         .filter(t => t.type === 'income')
         .reduce((sum, t) => sum + t.amount, 0);
 
-      const totalExpense = transactions
+      const totalExpense = allTransactions
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + t.amount, 0);
 
-      // Format message
-      const periodText = this.getPeriodText(period);
-      let message = `📊 *Your ${type || 'Transactions'} ${periodText}*\n\n`;
+      // Format message - AMOUNT FIRST (Main Priority)
+      let message = '';
+      const categoryText = category ? ` (${category})` : '';
 
-      if (!type) {
-        message += `📈 Income: ৳${totalIncome.toFixed(2)}\n`;
-        message += `📉 Expenses: ৳${totalExpense.toFixed(2)}\n`;
-        message += `💰 Net: ৳${(totalIncome - totalExpense).toFixed(2)}\n\n`;
-      } else {
-        const total = type === 'income' ? totalIncome : totalExpense;
-        message += `💰 Total: ৳${total.toFixed(2)}\n\n`;
+      if (!type || type === 'expense') {
+        // Expense query - SHOW TOTAL PROMINENTLY
+        message += `💸 *Total Expense${categoryText}*\n`;
+        message += `📅 ${periodLabel}\n\n`;
+        message += `🔴 *৳${totalExpense.toFixed(2)}*\n\n`;
+
+        if (!type && totalIncome > 0) {
+          message += `━━━━━━━━━━━━━━\n`;
+          message += `📈 Income: ৳${totalIncome.toFixed(2)}\n`;
+          message += `💰 Net: ${totalIncome - totalExpense >= 0 ? '+' : ''}৳${(totalIncome - totalExpense).toFixed(2)}\n\n`;
+        }
+      } else if (type === 'income') {
+        // Income query - SHOW TOTAL PROMINENTLY
+        message += `💰 *Total Income${categoryText}*\n`;
+        message += `📅 ${periodLabel}\n\n`;
+        message += `🟢 *৳${totalIncome.toFixed(2)}*\n\n`;
       }
 
-      message += `*Recent Transactions:*\n\n`;
+      // Add transaction count
+      message += `📊 ${allTransactions.length} transaction${allTransactions.length > 1 ? 's' : ''}\n\n`;
 
-      transactions.slice(0, 10).forEach((t, index) => {
-        const icon = t.type === 'income' ? '📈' : '📉';
-        const date = new Date(t.date).toLocaleDateString('en-GB');
-        message += `${index + 1}. ${icon} *৳${t.amount.toFixed(2)}*\n`;
-        message += `   ${t.description} - ${t.category}\n`;
-        message += `   _${date}_\n\n`;
-      });
+      // Show recent transactions (limited) as supporting details
+      const recentTransactions = allTransactions
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 5);
 
-      if (transactions.length > 10) {
-        message += `\n_Showing 10 of ${transactions.length} transactions_`;
+      if (recentTransactions.length > 0) {
+        message += `━━━━━━━━━━━━━━\n`;
+        message += `*Recent Transactions:*\n\n`;
+
+        recentTransactions.forEach((t, index) => {
+          const icon = t.type === 'income' ? '📈' : '📉';
+          const date = new Date(t.date).toLocaleDateString('en-GB');
+          message += `${index + 1}. ${icon} ৳${t.amount.toFixed(2)}\n`;
+          message += `   ${t.description} · ${t.category}\n`;
+          message += `   _${date}_\n\n`;
+        });
+
+        if (allTransactions.length > 5) {
+          message += `_+${allTransactions.length - 5} more transactions_\n`;
+          message += `💡 View all on dashboard`;
+        }
       }
 
       this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
