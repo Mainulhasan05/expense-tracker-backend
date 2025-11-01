@@ -160,3 +160,103 @@ exports.getActivityLogs = async (req, res) => {
     });
   }
 };
+
+/**
+ * Restrict user from Telegram
+ * POST /api/admin/users/:userId/restrict-telegram
+ */
+exports.restrictTelegramAccess = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body;
+    const adminId = req.user._id;
+
+    const User = require('../models/User');
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (!user.telegramId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User does not have a linked Telegram account'
+      });
+    }
+
+    // Update user restriction status
+    user.telegramRestricted = true;
+    user.telegramRestrictedReason = reason || 'Restricted by administrator';
+    user.telegramRestrictedAt = new Date();
+    user.telegramRestrictedBy = adminId;
+    await user.save();
+
+    logger.info(`Admin ${req.user.email} restricted Telegram access for user ${user.email}`);
+
+    res.json({
+      success: true,
+      message: 'User Telegram access has been restricted',
+      data: {
+        userId: user._id,
+        telegramRestricted: user.telegramRestricted,
+        telegramRestrictedReason: user.telegramRestrictedReason,
+        telegramRestrictedAt: user.telegramRestrictedAt
+      }
+    });
+  } catch (error) {
+    logger.error('Error restricting Telegram access:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to restrict Telegram access'
+    });
+  }
+};
+
+/**
+ * Remove Telegram restriction from user
+ * POST /api/admin/users/:userId/unrestrict-telegram
+ */
+exports.unrestrictTelegramAccess = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const User = require('../models/User');
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Remove restriction
+    user.telegramRestricted = false;
+    user.telegramRestrictedReason = undefined;
+    user.telegramRestrictedAt = undefined;
+    user.telegramRestrictedBy = undefined;
+    await user.save();
+
+    logger.info(`Admin ${req.user.email} unrestricted Telegram access for user ${user.email}`);
+
+    res.json({
+      success: true,
+      message: 'User Telegram restriction has been removed',
+      data: {
+        userId: user._id,
+        telegramRestricted: user.telegramRestricted
+      }
+    });
+  } catch (error) {
+    logger.error('Error unrestricting Telegram access:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to unrestrict Telegram access'
+    });
+  }
+};

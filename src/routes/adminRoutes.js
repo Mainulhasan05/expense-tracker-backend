@@ -4,6 +4,7 @@ const multer = require("multer");
 const adminController = require("../controllers/adminController");
 const voiceServiceController = require("../controllers/voiceServiceController");
 const clarifaiController = require("../controllers/clarifaiController");
+const telegramLogController = require("../controllers/telegramLogController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 const { uploadLimiter } = require("../middlewares/rateLimitMiddleware");
@@ -38,6 +39,10 @@ router.get("/users/:id", adminController.getUserDetails);
 router.put("/users/:id", adminController.updateUser);
 router.delete("/users/:id", adminController.deleteUser);
 
+// Telegram user restrictions
+router.post("/users/:userId/restrict-telegram", adminController.restrictTelegramAccess);
+router.post("/users/:userId/unrestrict-telegram", adminController.unrestrictTelegramAccess);
+
 // Activity logs
 router.get("/activity", adminController.getActivityLogs);
 
@@ -64,5 +69,12 @@ router.delete("/clarifai/accounts/:id", clarifaiController.deleteAccount);
 router.post("/clarifai/test/:id", clarifaiController.testAccount);
 router.get("/clarifai/usage-stats", clarifaiController.getUsageStats);
 router.post("/clarifai/test-parsing", clarifaiController.testParsing);
+
+// Telegram Log Management
+router.get("/telegram-logs", telegramLogController.getAllLogs);
+router.get("/telegram-activity", telegramLogController.getActivityStats);
+router.get("/telegram-logs/user/:userId", telegramLogController.getUserLogs);
+router.delete("/telegram-logs/:logId", telegramLogController.deleteLog);
+router.delete("/telegram-logs/user/:userId", telegramLogController.deleteUserLogs);
 
 module.exports = router;

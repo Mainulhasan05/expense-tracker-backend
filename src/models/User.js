@@ -22,6 +22,8 @@ const userSchema = new mongoose.Schema(
     telegramLinkedAt: { type: Date },
     telegramLinkCode: { type: String },
     telegramLinkCodeExpiry: { type: Date },
+    lastTelegramActivity: { type: Date },
+    telegramMessageCount: { type: Number, default: 0 },
     telegramNotifications: {
       enabled: { type: Boolean, default: true },
       dailySummary: { type: Boolean, default: true },
@@ -30,6 +32,12 @@ const userSchema = new mongoose.Schema(
       budgetAlerts: { type: Boolean, default: true },
       expenseAdded: { type: Boolean, default: false }
     },
+
+    // Telegram Rate Limiting & Restrictions
+    telegramRestricted: { type: Boolean, default: false },
+    telegramRestrictedReason: { type: String },
+    telegramRestrictedAt: { type: Date },
+    telegramRestrictedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     role: { type: String, default: "user" },
 

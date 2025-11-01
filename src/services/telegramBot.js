@@ -2,6 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const Category = require('../models/Category');
+const TelegramLog = require('../models/TelegramLog');
 const nlpParser = require('../utils/nlpParser');
 const logger = require('../config/logger');
 const crypto = require('crypto');
@@ -45,6 +46,109 @@ class TelegramBotService {
     } catch (error) {
       logger.error('Failed to initialize Telegram bot:', error);
       console.error('❌ Telegram bot failed to start:', error.message);
+    }
+  }
+
+  /**
+   * Check rate limit and restrictions for Telegram user
+   * Returns: { allowed: boolean, warning: boolean, message: string }
+   */
+  async checkRateLimit(user) {
+    const RATE_LIMIT_MAX = 20; // Max messages per hour
+    const RATE_LIMIT_WARNING = 15; // Warning threshold
+    const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour in milliseconds
+
+    try {
+      // Check if user is restricted by admin
+      if (user.telegramRestricted) {
+        return {
+          allowed: false,
+          warning: false,
+          message: `❌ *Access Restricted*\n\n` +
+            `Your Telegram access has been restricted by an administrator.\n\n` +
+            `Reason: ${user.telegramRestrictedReason || 'Not specified'}\n\n` +
+            `If you believe this is an error, please contact support.`
+        };
+      }
+
+      // Count messages in the last hour
+      const oneHourAgo = new Date(Date.now() - RATE_LIMIT_WINDOW);
+      const messageCount = await TelegramLog.countDocuments({
+        user: user._id,
+        createdAt: { $gte: oneHourAgo }
+      });
+
+      // Check if rate limit exceeded
+      if (messageCount >= RATE_LIMIT_MAX) {
+        const oldestMessage = await TelegramLog.findOne({
+          user: user._id,
+          createdAt: { $gte: oneHourAgo }
+        }).sort({ createdAt: 1 });
+
+        const resetTime = oldestMessage
+          ? new Date(oldestMessage.createdAt.getTime() + RATE_LIMIT_WINDOW)
+          : new Date(Date.now() + RATE_LIMIT_WINDOW);
+
+        const minutesUntilReset = Math.ceil((resetTime - Date.now()) / 60000);
+
+        return {
+          allowed: false,
+          warning: false,
+          message: `⏱️ *Rate Limit Reached*\n\n` +
+            `You've reached the maximum of ${RATE_LIMIT_MAX} messages per hour.\n\n` +
+            `⏳ Please wait ${minutesUntilReset} minute${minutesUntilReset > 1 ? 's' : ''} before sending more messages.\n\n` +
+            `💡 This limit helps us maintain service quality for all users.`
+        };
+      }
+
+      // Check if warning should be shown
+      if (messageCount >= RATE_LIMIT_WARNING) {
+        const remaining = RATE_LIMIT_MAX - messageCount;
+        return {
+          allowed: true,
+          warning: true,
+          message: `⚠️ *Rate Limit Warning*\n\n` +
+            `You have ${remaining} message${remaining > 1 ? 's' : ''} remaining in this hour.\n\n` +
+            `The limit resets every hour. Please use messages wisely.`
+        };
+      }
+
+      return { allowed: true, warning: false, message: null };
+    } catch (error) {
+      logger.error('Error checking rate limit:', error);
+      // On error, allow the message to avoid blocking legitimate users
+      return { allowed: true, warning: false, message: null };
+    }
+  }
+
+  /**
+   * Log Telegram message and update user activity
+   */
+  async logTelegramMessage(user, messageType, userMessage, botResponse, intent = null, success = true, metadata = {}) {
+    try {
+      // Create log entry
+      await TelegramLog.create({
+        user: user._id,
+        telegramUserId: user.telegramId,
+        telegramUsername: user.telegramUsername,
+        messageType: messageType,
+        userMessage: userMessage,
+        botResponse: botResponse,
+        intent: intent,
+        success: success,
+        metadata: metadata
+      });
+
+      // Update user activity
+      await User.findByIdAndUpdate(user._id, {
+        lastTelegramActivity: new Date(),
+        $inc: { telegramMessageCount: 1 }
+      });
+
+      logger.info(`Telegram message logged: ${user.email} - ${messageType} - ${intent || 'N/A'}`);
+    } catch (error) {
+      logger.error('Error logging Telegram message:', error);
+      // Don't throw - logging should not break the main flow
     }
   }
 
@@ -118,8 +222,7 @@ class TelegramBotService {
     const user = await User.findOne({ telegramId });
 
     if (user) {
-      this.bot.sendMessage(chatId,
-        `👋 Welcome back, ${user.name}!\n\n` +
+      const responseMessage = `👋 Welcome back, ${user.name}!\n\n` +
         `🤖 *Conversational AI Assistant*\n` +
         `Just chat naturally - I understand your questions!\n\n` +
         `💬 *Try asking me:*\n` +
@@ -131,8 +234,18 @@ class TelegramBotService {
         `📸 *Also works with:*\n` +
         `• 🎤 Voice messages\n` +
         `• 📷 Receipt photos\n\n` +
-        `Type /help to see all I can do! 🚀`,
-        { parse_mode: 'Markdown' }
+        `Type /help to see all I can do! 🚀`;
+
+      this.bot.sendMessage(chatId, responseMessage, { parse_mode: 'Markdown' });
+
+      // Log the interaction
+      await this.logTelegramMessage(
+        user,
+        'command',
+        '/start',
+        responseMessage,
+        'START',
+        true
       );
     } else {
       this.bot.sendMessage(chatId,
@@ -303,7 +416,30 @@ class TelegramBotService {
 
     if (!user) return; // Silently ignore if not linked
 
+    const originalMessage = msg.text;
+    const startTime = Date.now();
+
     try {
+      // Check rate limit and restrictions
+      const rateLimitCheck = await this.checkRateLimit(user);
+
+      if (!rateLimitCheck.allowed) {
+        // User is rate limited or restricted
+        this.bot.sendMessage(chatId, rateLimitCheck.message, { parse_mode: 'Markdown' });
+
+        // Log the rate limit block
+        await this.logTelegramMessage(
+          user,
+          'text',
+          originalMessage,
+          rateLimitCheck.message,
+          'RATE_LIMIT_BLOCK',
+          false,
+          { reason: user.telegramRestricted ? 'admin_restricted' : 'rate_limit_exceeded' }
+        );
+        return;
+      }
+
       // Send "processing" message
       const processingMsg = await this.bot.sendMessage(chatId, '🤖 Understanding your message...');
 
@@ -323,39 +459,40 @@ class TelegramBotService {
       }
 
       const { intent, parameters, confidence } = intentResult.data;
+      const processingTime = Date.now() - startTime;
 
       // Route to appropriate handler based on intent
       switch (intent) {
         case 'ADD_TRANSACTION':
-          await this.handleAddTransactionIntent(chatId, user, parameters);
+          await this.handleAddTransactionIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'VIEW_TRANSACTIONS':
-          await this.handleViewTransactionsIntent(chatId, user, parameters);
+          await this.handleViewTransactionsIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'VIEW_BALANCE':
-          await this.handleViewBalanceIntent(chatId, user, parameters);
+          await this.handleViewBalanceIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'VIEW_CATEGORIES':
-          await this.handleViewCategoriesIntent(chatId, user, parameters);
+          await this.handleViewCategoriesIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'ADD_CATEGORY':
-          await this.handleAddCategoryIntent(chatId, user, parameters);
+          await this.handleAddCategoryIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'VIEW_REPORT':
-          await this.handleViewReportIntent(chatId, user, parameters);
+          await this.handleViewReportIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'GENERAL_GREETING':
-          await this.handleGreetingIntent(chatId, user, parameters);
+          await this.handleGreetingIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'HELP':
-          await this.handleHelpIntent(chatId, user, parameters);
+          await this.handleHelpIntent(chatId, user, parameters, originalMessage);
           break;
 
         default:
@@ -363,15 +500,33 @@ class TelegramBotService {
           if (confidence < 0.6) {
             await this.handleLegacyTransaction(msg, user, categories);
           } else {
-            this.bot.sendMessage(chatId,
-              `🤔 I'm not sure what you're asking for.\n\n` +
+            const uncertainResponse = `🤔 I'm not sure what you're asking for.\n\n` +
               `Try:\n` +
               `• "show my expenses"\n` +
               `• "lunch 500tk"\n` +
               `• "what's my balance?"\n` +
-              `• Type /help for more examples`
+              `• Type /help for more examples`;
+
+            this.bot.sendMessage(chatId, uncertainResponse);
+
+            // Log uncertain intent
+            await this.logTelegramMessage(
+              user,
+              'text',
+              originalMessage,
+              uncertainResponse,
+              'OTHER',
+              false,
+              { confidence, aiConfidence: confidence, processingTime }
             );
           }
+      }
+
+      // Show rate limit warning if approaching limit (after processing message)
+      if (rateLimitCheck.warning && rateLimitCheck.message) {
+        setTimeout(() => {
+          this.bot.sendMessage(chatId, rateLimitCheck.message, { parse_mode: 'Markdown' });
+        }, 1000); // Delay warning slightly so it appears after the response
       }
 
     } catch (error) {
@@ -427,12 +582,24 @@ class TelegramBotService {
   /**
    * Intent Handler: Add Transaction
    */
-  async handleAddTransactionIntent(chatId, user, parameters) {
+  async handleAddTransactionIntent(chatId, user, parameters, originalMessage = '') {
     try {
       const { type, amount, description, category, currency } = parameters;
 
       if (!amount || amount <= 0) {
-        this.bot.sendMessage(chatId, '❌ Please specify a valid amount.');
+        const errorResponse = '❌ Please specify a valid amount.';
+        this.bot.sendMessage(chatId, errorResponse);
+
+        // Log failed transaction attempt
+        await this.logTelegramMessage(
+          user,
+          'text',
+          originalMessage,
+          errorResponse,
+          'ADD_TRANSACTION',
+          false,
+          { error: 'Invalid amount' }
+        );
         return;
       }
 
@@ -448,24 +615,47 @@ class TelegramBotService {
       const emoji = type === 'income' ? '💰' : '💸';
       const symbol = currency === 'BDT' ? '৳' : currency === 'USD' ? '$' : '৳';
 
-      this.bot.sendMessage(chatId,
-        `✅ ${type === 'income' ? 'Income' : 'Expense'} added!\n\n` +
+      const successResponse = `✅ ${type === 'income' ? 'Income' : 'Expense'} added!\n\n` +
         `${emoji} ${symbol}${Math.abs(amount)} - ${description}\n` +
         `📁 ${category}\n` +
-        `💵 Current Balance: ৳${balance.toFixed(2)}`
+        `💵 Current Balance: ৳${balance.toFixed(2)}`;
+
+      this.bot.sendMessage(chatId, successResponse);
+
+      // Log successful transaction
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        successResponse,
+        'ADD_TRANSACTION',
+        true,
+        { amount, type, category, description }
       );
 
       logger.info(`Transaction added via AI: ${user.email} - ${type} ${symbol}${amount}`);
     } catch (error) {
       logger.error('Error adding transaction:', error);
-      this.bot.sendMessage(chatId, '❌ Error adding transaction. Please try again.');
+      const errorResponse = '❌ Error adding transaction. Please try again.';
+      this.bot.sendMessage(chatId, errorResponse);
+
+      // Log error
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        errorResponse,
+        'ADD_TRANSACTION',
+        false,
+        { error: error.message }
+      );
     }
   }
 
   /**
    * Intent Handler: View Transactions
    */
-  async handleViewTransactionsIntent(chatId, user, parameters) {
+  async handleViewTransactionsIntent(chatId, user, parameters, originalMessage = '') {
     try {
       const { period, type, category, limit } = parameters;
 
@@ -511,9 +701,20 @@ class TelegramBotService {
 
       if (allTransactions.length === 0) {
         const periodText = this.getPeriodText(period);
-        this.bot.sendMessage(chatId,
-          `📊 No ${type || 'transactions'} found ${periodText}.\n\n` +
-          `Start adding expenses by typing naturally!`
+        const noDataResponse = `📊 No ${type || 'transactions'} found ${periodText}.\n\n` +
+          `Start adding expenses by typing naturally!`;
+
+        this.bot.sendMessage(chatId, noDataResponse);
+
+        // Log no data found
+        await this.logTelegramMessage(
+          user,
+          'text',
+          originalMessage,
+          noDataResponse,
+          'VIEW_TRANSACTIONS',
+          true,
+          { period, type, category, transactionCount: 0 }
         );
         return;
       }
@@ -576,16 +777,39 @@ class TelegramBotService {
       }
 
       this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+      // Log successful transaction view
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        message,
+        'VIEW_TRANSACTIONS',
+        true,
+        { period, type, category, transactionCount: allTransactions.length, totalExpense, totalIncome }
+      );
     } catch (error) {
       logger.error('Error viewing transactions:', error);
-      this.bot.sendMessage(chatId, '❌ Error fetching transactions. Please try again.');
+      const errorResponse = '❌ Error fetching transactions. Please try again.';
+      this.bot.sendMessage(chatId, errorResponse);
+
+      // Log error
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        errorResponse,
+        'VIEW_TRANSACTIONS',
+        false,
+        { error: error.message }
+      );
     }
   }
 
   /**
    * Intent Handler: View Balance
    */
-  async handleViewBalanceIntent(chatId, user, parameters) {
+  async handleViewBalanceIntent(chatId, user, parameters, originalMessage = '') {
     try {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -607,26 +831,48 @@ class TelegramBotService {
       const balance = income - expenses;
       const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-      this.bot.sendMessage(chatId,
-        `💰 *Your Financial Summary*\n\n` +
+      const responseMessage = `💰 *Your Financial Summary*\n\n` +
         `📅 ${monthName}\n\n` +
         `📈 Income: ৳${income.toFixed(2)}\n` +
         `📉 Expenses: ৳${expenses.toFixed(2)}\n` +
         `💵 Balance: ${balance >= 0 ? '+' : ''}৳${balance.toFixed(2)}\n\n` +
         `📊 Transactions: ${transactions.length}\n\n` +
-        `${balance < 0 ? '⚠️ You are in deficit this month!' : '✅ Great! You have savings this month.'}`,
-        { parse_mode: 'Markdown' }
+        `${balance < 0 ? '⚠️ You are in deficit this month!' : '✅ Great! You have savings this month.'}`;
+
+      this.bot.sendMessage(chatId, responseMessage, { parse_mode: 'Markdown' });
+
+      // Log successful balance view
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        responseMessage,
+        'VIEW_BALANCE',
+        true,
+        { income, expenses, balance, transactionCount: transactions.length }
       );
     } catch (error) {
       logger.error('Error viewing balance:', error);
-      this.bot.sendMessage(chatId, '❌ Error getting balance. Please try again.');
+      const errorResponse = '❌ Error getting balance. Please try again.';
+      this.bot.sendMessage(chatId, errorResponse);
+
+      // Log error
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        errorResponse,
+        'VIEW_BALANCE',
+        false,
+        { error: error.message }
+      );
     }
   }
 
   /**
    * Intent Handler: View Categories
    */
-  async handleViewCategoriesIntent(chatId, user, parameters) {
+  async handleViewCategoriesIntent(chatId, user, parameters, originalMessage = '') {
     try {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -680,21 +926,56 @@ class TelegramBotService {
       }
 
       this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+      // Log successful category view
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        message,
+        'VIEW_CATEGORIES',
+        true,
+        { customCategoryCount: userCategories.length, totalExpenses: total, categoryCount: sorted.length }
+      );
     } catch (error) {
       logger.error('Error viewing categories:', error);
-      this.bot.sendMessage(chatId, '❌ Error getting categories. Please try again.');
+      const errorResponse = '❌ Error getting categories. Please try again.';
+      this.bot.sendMessage(chatId, errorResponse);
+
+      // Log error
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        errorResponse,
+        'VIEW_CATEGORIES',
+        false,
+        { error: error.message }
+      );
     }
   }
 
   /**
    * Intent Handler: Add Category
    */
-  async handleAddCategoryIntent(chatId, user, parameters) {
+  async handleAddCategoryIntent(chatId, user, parameters, originalMessage = '') {
     try {
       const { categoryName, type } = parameters;
 
       if (!categoryName) {
-        this.bot.sendMessage(chatId, '❌ Please specify a category name.');
+        const errorResponse = '❌ Please specify a category name.';
+        this.bot.sendMessage(chatId, errorResponse);
+
+        // Log failed attempt
+        await this.logTelegramMessage(
+          user,
+          'text',
+          originalMessage,
+          errorResponse,
+          'ADD_CATEGORY',
+          false,
+          { error: 'Missing category name' }
+        );
         return;
       }
 
@@ -705,9 +986,20 @@ class TelegramBotService {
       });
 
       if (existing) {
-        this.bot.sendMessage(chatId,
-          `⚠️ Category "${categoryName}" already exists!\n\n` +
-          `Your existing categories: Use /categories to view them.`
+        const existsResponse = `⚠️ Category "${categoryName}" already exists!\n\n` +
+          `Your existing categories: Use /categories to view them.`;
+
+        this.bot.sendMessage(chatId, existsResponse);
+
+        // Log duplicate attempt
+        await this.logTelegramMessage(
+          user,
+          'text',
+          originalMessage,
+          existsResponse,
+          'ADD_CATEGORY',
+          false,
+          { error: 'Category already exists', categoryName }
         );
         return;
       }
@@ -719,35 +1011,67 @@ class TelegramBotService {
         type: type || 'expense'
       });
 
-      this.bot.sendMessage(chatId,
-        `✅ Category created successfully!\n\n` +
+      const successResponse = `✅ Category created successfully!\n\n` +
         `📁 *${categoryName}* (${type || 'expense'})\n\n` +
         `You can now use this category when adding transactions!\n\n` +
-        `Example: "${categoryName} 500tk"`
+        `Example: "${categoryName} 500tk"`;
+
+      this.bot.sendMessage(chatId, successResponse);
+
+      // Log successful category creation
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        successResponse,
+        'ADD_CATEGORY',
+        true,
+        { categoryName, type: type || 'expense' }
       );
 
       logger.info(`Category created via AI: ${user.email} - ${categoryName}`);
     } catch (error) {
       logger.error('Error adding category:', error);
-      this.bot.sendMessage(chatId, '❌ Error creating category. Please try again.');
+      const errorResponse = '❌ Error creating category. Please try again.';
+      this.bot.sendMessage(chatId, errorResponse);
+
+      // Log error
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        errorResponse,
+        'ADD_CATEGORY',
+        false,
+        { error: error.message }
+      );
     }
   }
 
   /**
    * Intent Handler: View Report
    */
-  async handleViewReportIntent(chatId, user, parameters) {
+  async handleViewReportIntent(chatId, user, parameters, originalMessage = '') {
     try {
       // For detailed reports, direct to web app
-      this.bot.sendMessage(chatId,
-        `📊 *Monthly Report*\n\n` +
+      const reportMessage = `📊 *Monthly Report*\n\n` +
         `For detailed reports with charts and analytics, visit:\n` +
         `${process.env.APP_URL}/dashboard\n\n` +
         `Or use these commands:\n` +
         `• "show my balance" - Current summary\n` +
         `• "show this month expenses" - Monthly expenses\n` +
-        `• "show my categories" - Category breakdown`,
-        { parse_mode: 'Markdown' }
+        `• "show my categories" - Category breakdown`;
+
+      this.bot.sendMessage(chatId, reportMessage, { parse_mode: 'Markdown' });
+
+      // Log report request
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        reportMessage,
+        'VIEW_REPORT',
+        true
       );
     } catch (error) {
       logger.error('Error showing report:', error);
@@ -757,7 +1081,7 @@ class TelegramBotService {
   /**
    * Intent Handler: Greeting
    */
-  async handleGreetingIntent(chatId, user, parameters) {
+  async handleGreetingIntent(chatId, user, parameters, originalMessage = '') {
     const greetings = [
       `👋 Hello ${user.name}! How can I help you manage your expenses today?`,
       `Hi ${user.name}! 👋 Ready to track some expenses?`,
@@ -767,22 +1091,31 @@ class TelegramBotService {
 
     const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
 
-    this.bot.sendMessage(chatId,
-      `${randomGreeting}\n\n` +
+    const responseMessage = `${randomGreeting}\n\n` +
       `💡 Try saying:\n` +
       `• "show my balance"\n` +
       `• "show last month expenses"\n` +
       `• "lunch 500tk"\n` +
-      `• "received salary 50000"`
+      `• "received salary 50000"`;
+
+    this.bot.sendMessage(chatId, responseMessage);
+
+    // Log greeting interaction
+    await this.logTelegramMessage(
+      user,
+      'text',
+      originalMessage,
+      responseMessage,
+      'GENERAL_GREETING',
+      true
     );
   }
 
   /**
    * Intent Handler: Help
    */
-  async handleHelpIntent(chatId, user, parameters) {
-    this.bot.sendMessage(chatId,
-      `🤖 *AI Expense Tracker - Natural Conversation*\n\n` +
+  async handleHelpIntent(chatId, user, parameters, originalMessage = '') {
+    const helpMessage = `🤖 *AI Expense Tracker - Natural Conversation*\n\n` +
       `Just chat naturally! I understand:\n\n` +
       `*💰 Adding Transactions:*\n` +
       `• "lunch 500tk"\n` +
@@ -802,8 +1135,18 @@ class TelegramBotService {
       `You can also use:\n` +
       `📸 Send receipt photos\n` +
       `🎤 Send voice messages\n\n` +
-      `Type naturally - I'll understand! 🧠`,
-      { parse_mode: 'Markdown' }
+      `Type naturally - I'll understand! 🧠`;
+
+    this.bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+
+    // Log help request
+    await this.logTelegramMessage(
+      user,
+      'text',
+      originalMessage,
+      helpMessage,
+      'HELP',
+      true
     );
   }
 
@@ -1270,6 +1613,26 @@ Visit dashboard: ${process.env.APP_URL}
     if (!user) return;
 
     try {
+      // Check rate limit and restrictions
+      const rateLimitCheck = await this.checkRateLimit(user);
+
+      if (!rateLimitCheck.allowed) {
+        // User is rate limited or restricted
+        this.bot.sendMessage(chatId, rateLimitCheck.message, { parse_mode: 'Markdown' });
+
+        // Log the rate limit block
+        await this.logTelegramMessage(
+          user,
+          'voice',
+          '[Voice message]',
+          rateLimitCheck.message,
+          'RATE_LIMIT_BLOCK',
+          false,
+          { reason: user.telegramRestricted ? 'admin_restricted' : 'rate_limit_exceeded' }
+        );
+        return;
+      }
+
       // Send processing message
       const processingMsg = await this.bot.sendMessage(chatId, `🎤 Processing voice message...\n⏳ Transcribing audio...`);
 
@@ -1303,11 +1666,24 @@ Visit dashboard: ${process.env.APP_URL}
       await fs.unlink(tempFilePath).catch(() => {});
 
       if (!transcriptionResult.success) {
-        await this.bot.editMessageText(
-          `❌ Failed to transcribe voice message.\n\n` +
+        const failMessage = `❌ Failed to transcribe voice message.\n\n` +
           `${transcriptionResult.error || 'Please try again or use text commands.'}\n\n` +
-          `💡 Tip: Speak clearly and ensure good audio quality.`,
+          `💡 Tip: Speak clearly and ensure good audio quality.`;
+
+        await this.bot.editMessageText(
+          failMessage,
           { chat_id: chatId, message_id: processingMsg.message_id }
+        );
+
+        // Log transcription failure
+        await this.logTelegramMessage(
+          user,
+          'voice',
+          '[Voice message]',
+          failMessage,
+          null,
+          false,
+          { error: 'Transcription failed', errorDetails: transcriptionResult.error }
         );
         return;
       }
@@ -1343,15 +1719,25 @@ Visit dashboard: ${process.env.APP_URL}
 
         // If still not valid, send error
         if (!nlpParser.isValid(parsed)) {
-          this.bot.sendMessage(chatId,
-            `🎤 Voice transcribed!\n\n` +
+          const parseFailMessage = `🎤 Voice transcribed!\n\n` +
             `📝 _"${transcribedText}"_\n\n` +
             `❌ Couldn't understand the expense format.\n\n` +
             `💡 Try saying something like:\n` +
             `• "Coffee 5"\n` +
             `• "Spent 50 on groceries"\n` +
-            `• "Lunch 25 dollars"`,
-            { parse_mode: 'Markdown' }
+            `• "Lunch 25 dollars"`;
+
+          this.bot.sendMessage(chatId, parseFailMessage, { parse_mode: 'Markdown' });
+
+          // Log parsing failure
+          await this.logTelegramMessage(
+            user,
+            'voice',
+            transcribedText,
+            parseFailMessage,
+            null,
+            false,
+            { voiceTranscribed: transcribedText, error: 'Parsing failed' }
           );
           return;
         }
@@ -1361,14 +1747,29 @@ Visit dashboard: ${process.env.APP_URL}
         const balance = await this.calculateBalance(user._id);
 
         // Send success message
-        this.bot.sendMessage(chatId,
-          `✅ Voice expense added!\n\n` +
+        const successResponse = `✅ Voice expense added!\n\n` +
           `🎤 Transcribed: _"${transcribedText}"_\n\n` +
           `💰 Amount: $${parsed.amount.toFixed(2)}\n` +
           `📁 Category: ${parsed.category}\n` +
           `📝 Note: ${parsed.description}\n\n` +
-          `💵 Current Balance: $${balance.toFixed(2)}`,
-          { parse_mode: 'Markdown' }
+          `💵 Current Balance: $${balance.toFixed(2)}`;
+
+        this.bot.sendMessage(chatId, successResponse, { parse_mode: 'Markdown' });
+
+        // Log successful voice transaction (fallback parser)
+        await this.logTelegramMessage(
+          user,
+          'voice',
+          transcribedText,
+          successResponse,
+          'ADD_TRANSACTION',
+          true,
+          {
+            voiceTranscribed: transcribedText,
+            amount: parsed.amount,
+            category: parsed.category,
+            parser: 'fallback_nlp'
+          }
         );
 
         logger.info(`Voice expense added via Telegram (fallback): ${user.email} - $${parsed.amount} (${transcriptionResult.audioSeconds}s audio)`);
@@ -1406,14 +1807,29 @@ Visit dashboard: ${process.env.APP_URL}
         const emoji = t.type === 'expense' ? '💸' : '💰';
         const symbol = t.currency === 'BDT' ? '৳' : t.currency === 'USD' ? '$' : '₹';
 
-        this.bot.sendMessage(chatId,
-          `✅ Voice transaction saved!\n\n` +
+        const aiSuccessResponse = `✅ Voice transaction saved!\n\n` +
           `🎤 _"${transcribedText}"_\n\n` +
           `${emoji} ${symbol}${Math.abs(t.amount)} - ${t.description}\n` +
           `📁 ${t.category}\n` +
-          `💵 Balance: ৳${balance.toFixed(2)}\n\n` +
-          
-          { parse_mode: 'Markdown' }
+          `💵 Balance: ৳${balance.toFixed(2)}`;
+
+        this.bot.sendMessage(chatId, aiSuccessResponse, { parse_mode: 'Markdown' });
+
+        // Log successful voice transaction (AI parser)
+        await this.logTelegramMessage(
+          user,
+          'voice',
+          transcribedText,
+          aiSuccessResponse,
+          'ADD_TRANSACTION',
+          true,
+          {
+            voiceTranscribed: transcribedText,
+            amount: Math.abs(t.amount),
+            category: t.category,
+            type: t.type,
+            parser: 'ai_clarifai'
+          }
         );
 
         logger.info(`Voice expense added via Telegram (AI): ${user.email} - ${symbol}${Math.abs(t.amount)} (${transcriptionResult.audioSeconds}s audio)`);
