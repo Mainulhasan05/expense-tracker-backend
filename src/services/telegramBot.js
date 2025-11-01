@@ -13,6 +13,7 @@ const telegramService = require('./telegramService');
 const cron = require('node-cron');
 const voiceService = require('./voiceService');
 const clarifaiService = require('./clarifaiService');
+const conversationalAI = require('./conversationalAI');
 
 class TelegramBotService {
   constructor() {
@@ -119,32 +120,36 @@ class TelegramBotService {
     if (user) {
       this.bot.sendMessage(chatId,
         `👋 Welcome back, ${user.name}!\n\n` +
-        `🧠 *AI-Powered Features:*\n` +
-        `Just type naturally - no commands needed!\n\n` +
-        `💬 Try saying:\n` +
-        `• "I spent 500 taka on lunch"\n` +
-        `• "আজকে ৫০০ টাকা বাজার করেছি"\n` +
-        `• "lunch 250tk and coffee 80tk"\n\n` +
-        `📸 Also supports:\n` +
-        `• Voice messages (Bengali/English)\n` +
-        `• Receipt photos\n\n` +
-        `📊 Commands: /balance | /recent | /help`,
+        `🤖 *Conversational AI Assistant*\n` +
+        `Just chat naturally - I understand your questions!\n\n` +
+        `💬 *Try asking me:*\n` +
+        `• "show my balance"\n` +
+        `• "show last month expenses"\n` +
+        `• "lunch 500 taka"\n` +
+        `• "add a category called Travel"\n` +
+        `• "আমার খরচ দেখাও" (Bengali)\n\n` +
+        `📸 *Also works with:*\n` +
+        `• 🎤 Voice messages\n` +
+        `• 📷 Receipt photos\n\n` +
+        `Type /help to see all I can do! 🚀`,
         { parse_mode: 'Markdown' }
       );
     } else {
       this.bot.sendMessage(chatId,
         `🤖 *Welcome to AI Expense Tracker!*\n\n` +
-        `🌟 Features:\n` +
-        `✅ Natural language (English & Bengali)\n` +
-        `✅ Voice message transcription\n` +
+        `🌟 *Conversational AI Features:*\n` +
+        `✅ Natural conversations (English & Bengali)\n` +
+        `✅ Smart queries - ask anything!\n` +
+        `✅ Voice message support\n` +
         `✅ Receipt photo scanning\n` +
-        `✅ AI-powered transaction parsing\n\n` +
-        `📱 *Link Your Account:*\n` +
+        `✅ Automatic transaction parsing\n\n` +
+        `📱 *Get Started:*\n` +
         `1. Go to your dashboard settings\n` +
         `2. Find "Link Telegram" section\n` +
         `3. Generate link code\n` +
         `4. Type: /link YOUR_CODE\n\n` +
-        `❓ Type /help for examples`,
+        `Once linked, just chat naturally!\n` +
+        `Type /help to see examples 💡`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -290,7 +295,7 @@ class TelegramBotService {
   }
 
   /**
-   * Handle quick expense (plain text)
+   * Handle conversational messages (main AI handler)
    */
   async handleQuickExpense(msg) {
     const chatId = msg.chat.id;
@@ -302,53 +307,97 @@ class TelegramBotService {
       // Send "processing" message
       const processingMsg = await this.bot.sendMessage(chatId, '🤖 Understanding your message...');
 
-      // Get user's categories for better AI suggestions
+      // Get user's categories for context
       const categories = await Category.find({ user: user._id });
 
-      // Parse message with Clarifai AI
-      const result = await clarifaiService.parseTransaction(msg.text, categories);
+      // Classify intent using conversational AI
+      const intentResult = await conversationalAI.classifyIntent(msg.text, categories);
 
       // Delete processing message
       await this.bot.deleteMessage(chatId, processingMsg.message_id);
 
-      if (!result.success) {
-        // Try fallback to old parser for simple cases
-        let parsed = nlpParser.parseQuickFormat(msg.text);
-        if (!parsed || !nlpParser.isValid(parsed)) {
-          parsed = nlpParser.parse(msg.text);
-        }
-
-        if (!nlpParser.isValid(parsed)) return; // Silently ignore invalid messages
-
-        // Use old parser result
-        const transaction = await this.createTransaction(user, parsed);
-        const balance = await this.calculateBalance(user._id);
-
-        this.bot.sendMessage(chatId,
-          `✅ Expense logged!\n\n` +
-          `💰 ৳${Math.abs(parsed.amount).toFixed(2)} - ${parsed.category}\n` +
-          `💵 Balance: ৳${balance.toFixed(2)}`
-        );
+      if (!intentResult.success) {
+        // Fallback to old transaction parsing
+        await this.handleLegacyTransaction(msg, user, categories);
         return;
       }
 
-      const { data } = result;
+      const { intent, parameters, confidence } = intentResult.data;
 
-      // Check if valid transaction
-      if (!data.valid) {
-        return; // Silently ignore non-transaction messages
+      // Route to appropriate handler based on intent
+      switch (intent) {
+        case 'ADD_TRANSACTION':
+          await this.handleAddTransactionIntent(chatId, user, parameters);
+          break;
+
+        case 'VIEW_TRANSACTIONS':
+          await this.handleViewTransactionsIntent(chatId, user, parameters);
+          break;
+
+        case 'VIEW_BALANCE':
+          await this.handleViewBalanceIntent(chatId, user, parameters);
+          break;
+
+        case 'VIEW_CATEGORIES':
+          await this.handleViewCategoriesIntent(chatId, user, parameters);
+          break;
+
+        case 'ADD_CATEGORY':
+          await this.handleAddCategoryIntent(chatId, user, parameters);
+          break;
+
+        case 'VIEW_REPORT':
+          await this.handleViewReportIntent(chatId, user, parameters);
+          break;
+
+        case 'GENERAL_GREETING':
+          await this.handleGreetingIntent(chatId, user, parameters);
+          break;
+
+        case 'HELP':
+          await this.handleHelpIntent(chatId, user, parameters);
+          break;
+
+        default:
+          // If uncertain, try old transaction parser as fallback
+          if (confidence < 0.6) {
+            await this.handleLegacyTransaction(msg, user, categories);
+          } else {
+            this.bot.sendMessage(chatId,
+              `🤔 I'm not sure what you're asking for.\n\n` +
+              `Try:\n` +
+              `• "show my expenses"\n` +
+              `• "lunch 500tk"\n` +
+              `• "what's my balance?"\n` +
+              `• Type /help for more examples`
+            );
+          }
       }
 
-      const { transactions } = data;
+    } catch (error) {
+      logger.error('Error handling conversation:', error);
+      // Silently fail for user experience
+    }
+  }
 
-      if (transactions.length === 0) {
-        return; // Silently ignore if no transactions found
+  /**
+   * Legacy transaction parsing (fallback)
+   */
+  async handleLegacyTransaction(msg, user, categories) {
+    const chatId = msg.chat.id;
+
+    try {
+      const result = await clarifaiService.parseTransaction(msg.text, categories);
+
+      if (!result.success || !result.data.valid) {
+        return; // Silently ignore
       }
 
-      // If single transaction with high confidence, auto-save
+      const { transactions } = result.data;
+      if (transactions.length === 0) return;
+
       if (transactions.length === 1) {
         const t = transactions[0];
-
         const transaction = await this.createTransaction(user, {
           amount: Math.abs(t.amount),
           type: t.type,
@@ -358,7 +407,6 @@ class TelegramBotService {
         });
 
         const balance = await this.calculateBalance(user._id);
-
         const emoji = t.type === 'expense' ? '💸' : '💰';
         const symbol = t.currency === 'BDT' ? '৳' : t.currency === 'USD' ? '$' : '₹';
 
@@ -366,20 +414,387 @@ class TelegramBotService {
           `✅ Transaction saved!\n\n` +
           `${emoji} ${symbol}${Math.abs(t.amount)} - ${t.description}\n` +
           `📁 ${t.category}\n` +
-          `💵 Balance: ৳${balance.toFixed(2)}\n\n` +
-          `🤖 Powered by AI`
+          `💵 Balance: ৳${balance.toFixed(2)}`
         );
+      } else {
+        await this.showTransactionConfirmation(chatId, user._id, transactions);
+      }
+    } catch (error) {
+      logger.error('Error in legacy transaction handler:', error);
+    }
+  }
 
+  /**
+   * Intent Handler: Add Transaction
+   */
+  async handleAddTransactionIntent(chatId, user, parameters) {
+    try {
+      const { type, amount, description, category, currency } = parameters;
+
+      if (!amount || amount <= 0) {
+        this.bot.sendMessage(chatId, '❌ Please specify a valid amount.');
         return;
       }
 
-      // Multiple transactions - show confirmation
-      await this.showTransactionConfirmation(chatId, user._id, transactions);
+      const transaction = await this.createTransaction(user, {
+        type: type || 'expense',
+        amount: Math.abs(amount),
+        category: category || 'Other',
+        description: description || (type === 'income' ? 'Income' : 'Expense'),
+        date: new Date()
+      });
 
+      const balance = await this.calculateBalance(user._id);
+      const emoji = type === 'income' ? '💰' : '💸';
+      const symbol = currency === 'BDT' ? '৳' : currency === 'USD' ? '$' : '৳';
+
+      this.bot.sendMessage(chatId,
+        `✅ ${type === 'income' ? 'Income' : 'Expense'} added!\n\n` +
+        `${emoji} ${symbol}${Math.abs(amount)} - ${description}\n` +
+        `📁 ${category}\n` +
+        `💵 Current Balance: ৳${balance.toFixed(2)}`
+      );
+
+      logger.info(`Transaction added via AI: ${user.email} - ${type} ${symbol}${amount}`);
     } catch (error) {
-      logger.error('Error handling quick expense:', error);
-      // Silently fail for user experience
+      logger.error('Error adding transaction:', error);
+      this.bot.sendMessage(chatId, '❌ Error adding transaction. Please try again.');
     }
+  }
+
+  /**
+   * Intent Handler: View Transactions
+   */
+  async handleViewTransactionsIntent(chatId, user, parameters) {
+    try {
+      const { period, type, category, limit } = parameters;
+
+      // Build query
+      const query = { user: user._id };
+
+      // Add date filter
+      const now = new Date();
+      if (period === 'last_month') {
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+        query.date = { $gte: lastMonth, $lte: endOfLastMonth };
+      } else if (period === 'this_month') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        query.date = { $gte: startOfMonth };
+      } else if (period === 'today') {
+        const startOfDay = new Date(now.setHours(0, 0, 0, 0));
+        query.date = { $gte: startOfDay };
+      } else if (period === 'this_week') {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        query.date = { $gte: startOfWeek };
+      }
+
+      // Add type filter
+      if (type) {
+        query.type = type;
+      }
+
+      // Add category filter
+      if (category) {
+        query.category = new RegExp(category, 'i');
+      }
+
+      // Fetch transactions
+      const transactions = await Transaction.find(query)
+        .sort({ date: -1 })
+        .limit(limit || 10);
+
+      if (transactions.length === 0) {
+        const periodText = this.getPeriodText(period);
+        this.bot.sendMessage(chatId,
+          `📊 No ${type || 'transactions'} found ${periodText}.\n\n` +
+          `Start adding expenses by typing naturally!`
+        );
+        return;
+      }
+
+      // Calculate totals
+      const totalIncome = transactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const totalExpense = transactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      // Format message
+      const periodText = this.getPeriodText(period);
+      let message = `📊 *Your ${type || 'Transactions'} ${periodText}*\n\n`;
+
+      if (!type) {
+        message += `📈 Income: ৳${totalIncome.toFixed(2)}\n`;
+        message += `📉 Expenses: ৳${totalExpense.toFixed(2)}\n`;
+        message += `💰 Net: ৳${(totalIncome - totalExpense).toFixed(2)}\n\n`;
+      } else {
+        const total = type === 'income' ? totalIncome : totalExpense;
+        message += `💰 Total: ৳${total.toFixed(2)}\n\n`;
+      }
+
+      message += `*Recent Transactions:*\n\n`;
+
+      transactions.slice(0, 10).forEach((t, index) => {
+        const icon = t.type === 'income' ? '📈' : '📉';
+        const date = new Date(t.date).toLocaleDateString('en-GB');
+        message += `${index + 1}. ${icon} *৳${t.amount.toFixed(2)}*\n`;
+        message += `   ${t.description} - ${t.category}\n`;
+        message += `   _${date}_\n\n`;
+      });
+
+      if (transactions.length > 10) {
+        message += `\n_Showing 10 of ${transactions.length} transactions_`;
+      }
+
+      this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    } catch (error) {
+      logger.error('Error viewing transactions:', error);
+      this.bot.sendMessage(chatId, '❌ Error fetching transactions. Please try again.');
+    }
+  }
+
+  /**
+   * Intent Handler: View Balance
+   */
+  async handleViewBalanceIntent(chatId, user, parameters) {
+    try {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+      const transactions = await Transaction.find({
+        user: user._id,
+        date: { $gte: startOfMonth, $lte: endOfMonth }
+      });
+
+      const income = transactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const expenses = transactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const balance = income - expenses;
+      const monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+      this.bot.sendMessage(chatId,
+        `💰 *Your Financial Summary*\n\n` +
+        `📅 ${monthName}\n\n` +
+        `📈 Income: ৳${income.toFixed(2)}\n` +
+        `📉 Expenses: ৳${expenses.toFixed(2)}\n` +
+        `💵 Balance: ${balance >= 0 ? '+' : ''}৳${balance.toFixed(2)}\n\n` +
+        `📊 Transactions: ${transactions.length}\n\n` +
+        `${balance < 0 ? '⚠️ You are in deficit this month!' : '✅ Great! You have savings this month.'}`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      logger.error('Error viewing balance:', error);
+      this.bot.sendMessage(chatId, '❌ Error getting balance. Please try again.');
+    }
+  }
+
+  /**
+   * Intent Handler: View Categories
+   */
+  async handleViewCategoriesIntent(chatId, user, parameters) {
+    try {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      // Get user's custom categories
+      const userCategories = await Category.find({ user: user._id });
+
+      // Get transactions for current month
+      const transactions = await Transaction.find({
+        user: user._id,
+        type: 'expense',
+        date: { $gte: startOfMonth }
+      });
+
+      // Group by category
+      const categoryTotals = {};
+      let total = 0;
+
+      transactions.forEach(t => {
+        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+        total += t.amount;
+      });
+
+      // Sort by amount
+      const sorted = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+
+      let message = `📊 *Your Categories & Spending*\n\n`;
+      message += `📅 ${now.toLocaleString('default', { month: 'long' })}\n\n`;
+
+      if (userCategories.length > 0) {
+        message += `*Your Custom Categories:*\n`;
+        userCategories.forEach(cat => {
+          message += `• ${cat.name} (${cat.type})\n`;
+        });
+        message += `\n`;
+      }
+
+      if (sorted.length > 0) {
+        message += `*Spending Breakdown:*\n`;
+        sorted.forEach(([category, amount]) => {
+          const percentage = ((amount / total) * 100).toFixed(1);
+          const bar = '▓'.repeat(Math.ceil(percentage / 5));
+          message += `\n📁 *${category}*\n`;
+          message += `   ৳${amount.toFixed(2)} (${percentage}%)\n`;
+          message += `   ${bar}\n`;
+        });
+        message += `\n💰 *Total Expenses:* ৳${total.toFixed(2)}`;
+      } else {
+        message += `No expenses this month yet.\n\n`;
+        message += `💡 Start tracking by typing: "lunch 500tk"`;
+      }
+
+      this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    } catch (error) {
+      logger.error('Error viewing categories:', error);
+      this.bot.sendMessage(chatId, '❌ Error getting categories. Please try again.');
+    }
+  }
+
+  /**
+   * Intent Handler: Add Category
+   */
+  async handleAddCategoryIntent(chatId, user, parameters) {
+    try {
+      const { categoryName, type } = parameters;
+
+      if (!categoryName) {
+        this.bot.sendMessage(chatId, '❌ Please specify a category name.');
+        return;
+      }
+
+      // Check if category already exists
+      const existing = await Category.findOne({
+        user: user._id,
+        name: new RegExp(`^${categoryName}$`, 'i')
+      });
+
+      if (existing) {
+        this.bot.sendMessage(chatId,
+          `⚠️ Category "${categoryName}" already exists!\n\n` +
+          `Your existing categories: Use /categories to view them.`
+        );
+        return;
+      }
+
+      // Create new category
+      const category = await Category.create({
+        user: user._id,
+        name: categoryName,
+        type: type || 'expense'
+      });
+
+      this.bot.sendMessage(chatId,
+        `✅ Category created successfully!\n\n` +
+        `📁 *${categoryName}* (${type || 'expense'})\n\n` +
+        `You can now use this category when adding transactions!\n\n` +
+        `Example: "${categoryName} 500tk"`
+      );
+
+      logger.info(`Category created via AI: ${user.email} - ${categoryName}`);
+    } catch (error) {
+      logger.error('Error adding category:', error);
+      this.bot.sendMessage(chatId, '❌ Error creating category. Please try again.');
+    }
+  }
+
+  /**
+   * Intent Handler: View Report
+   */
+  async handleViewReportIntent(chatId, user, parameters) {
+    try {
+      // For detailed reports, direct to web app
+      this.bot.sendMessage(chatId,
+        `📊 *Monthly Report*\n\n` +
+        `For detailed reports with charts and analytics, visit:\n` +
+        `${process.env.APP_URL}/dashboard\n\n` +
+        `Or use these commands:\n` +
+        `• "show my balance" - Current summary\n` +
+        `• "show this month expenses" - Monthly expenses\n` +
+        `• "show my categories" - Category breakdown`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      logger.error('Error showing report:', error);
+    }
+  }
+
+  /**
+   * Intent Handler: Greeting
+   */
+  async handleGreetingIntent(chatId, user, parameters) {
+    const greetings = [
+      `👋 Hello ${user.name}! How can I help you manage your expenses today?`,
+      `Hi ${user.name}! 👋 Ready to track some expenses?`,
+      `Hey there ${user.name}! 😊 What would you like to do?`,
+      `Hello! 👋 I'm here to help with your finances.`
+    ];
+
+    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+
+    this.bot.sendMessage(chatId,
+      `${randomGreeting}\n\n` +
+      `💡 Try saying:\n` +
+      `• "show my balance"\n` +
+      `• "show last month expenses"\n` +
+      `• "lunch 500tk"\n` +
+      `• "received salary 50000"`
+    );
+  }
+
+  /**
+   * Intent Handler: Help
+   */
+  async handleHelpIntent(chatId, user, parameters) {
+    this.bot.sendMessage(chatId,
+      `🤖 *AI Expense Tracker - Natural Conversation*\n\n` +
+      `Just chat naturally! I understand:\n\n` +
+      `*💰 Adding Transactions:*\n` +
+      `• "lunch 500tk"\n` +
+      `• "received salary 50000"\n` +
+      `• "groceries 1500 taka"\n\n` +
+      `*📊 Viewing Data:*\n` +
+      `• "show my balance"\n` +
+      `• "show last month expenses"\n` +
+      `• "show all my transactions"\n` +
+      `• "show food expenses this month"\n\n` +
+      `*📁 Categories:*\n` +
+      `• "show my categories"\n` +
+      `• "add a category called Travel"\n\n` +
+      `*🇧🇩 Bengali Support:*\n` +
+      `• "আজকে ৫০০ টাকা বাজার করেছি"\n` +
+      `• "আমার ব্যালেন্স দেখাও"\n\n` +
+      `You can also use:\n` +
+      `📸 Send receipt photos\n` +
+      `🎤 Send voice messages\n\n` +
+      `Type naturally - I'll understand! 🧠`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  /**
+   * Helper: Get period text for display
+   */
+  getPeriodText(period) {
+    const texts = {
+      'last_month': 'last month',
+      'this_month': 'this month',
+      'today': 'today',
+      'this_week': 'this week',
+      'all': 'overall'
+    };
+    return texts[period] || 'recently';
   }
 
   /**
@@ -576,41 +991,57 @@ class TelegramBotService {
     const chatId = msg.chat.id;
 
     const help = `
-🤖 *Expense Tracker Bot - AI Powered*
+🤖 *Conversational AI Expense Tracker*
 
-*🚀 Smart Features (NEW!)*
-Just type naturally - AI understands! 🧠
+*💬 CHAT NATURALLY - I UNDERSTAND!*
 
-*💬 English Examples:*
-• "I spent 500 taka on lunch"
-• "lunch 250tk and coffee 80tk"
+*💰 Adding Money:*
+• "lunch 500tk"
 • "received salary 50000"
-• "groceries 450"
+• "groceries 1500 taka"
+• "paid 200 for transport"
 
-*🇧🇩 Bengali Support:*
+*📊 Viewing Your Data:*
+• "show my balance"
+• "what's my balance?"
+• "show last month expenses"
+• "show this month transactions"
+• "show all my transactions"
+• "show food expenses"
+• "show today's expenses"
+
+*📁 Managing Categories:*
+• "show my categories"
+• "show category breakdown"
+• "add a category called Travel"
+• "create new category Education"
+
+*💵 Income & Expenses:*
+• "add income 50000 salary"
+• "I received 5000 from bonus"
+• "spent 300 on medicine"
+
+*🇧🇩 Bengali Full Support:*
 • "আজকে ৫০০ টাকা বাজার করেছি"
-• "লাঞ্চে ২৫০ টাকা খরচ"
+• "আমার ব্যালেন্স দেখাও"
+• "গত মাসের খরচ দেখাও"
 • "বেতন ৫০০০০ টাকা পেয়েছি"
 
-*📊 Commands:*
-/balance - Current balance
-/recent - Last 5 transactions
-/report - Monthly report
-/categories - Category breakdown
-/settings - View settings
-
-*💡 Traditional Format (Still works):*
-/add 50 groceries
-/income 2000 salary
-
-*📸 More Features:*
+*📸 Other Features:*
 • 📷 Send receipt photo - Auto extract
-• 🎤 Send voice message - Auto transcribe
-• 🌍 Works in English & Bengali
+• 🎤 Send voice message (Bengali/English)
+• 🌍 Bilingual support
 
-*🤖 AI Powered by Clarifai*
+*⚡️ Quick Commands:*
+/balance - Current summary
+/recent - Last 5 transactions
+/categories - Category breakdown
+/settings - Your preferences
 
-Need help? Visit: ${process.env.APP_URL}
+*🤖 Powered by Advanced AI*
+No rigid commands - just chat! 🚀
+
+Visit dashboard: ${process.env.APP_URL}
     `;
 
     this.bot.sendMessage(chatId, help.trim(), { parse_mode: 'Markdown' });
