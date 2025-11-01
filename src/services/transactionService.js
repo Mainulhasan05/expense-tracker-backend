@@ -3,15 +3,50 @@ const Category = require("../models/Category");
 const mongoose = require("mongoose");
 
 exports.createTransaction = async (userId, transactionData) => {
-  // check if the category exists
-  const category = await Category.findById(transactionData.category);
-  if (!category) throw new Error("Category not found");
-  // check if the user is the owner of the category
-  if (category.user.toString() !== userId) throw new Error("Unauthorized");
-  // add category type in transactionData as type
-  transactionData.type = category.type;
+  let category;
+
+  // Check if category is an ObjectId or a string name
+  if (mongoose.Types.ObjectId.isValid(transactionData.category)) {
+    // Try to find by ID first
+    category = await Category.findById(transactionData.category);
+  }
+
+  // If not found by ID, try to find by name
+  if (!category) {
+    category = await Category.findOne({
+      name: transactionData.category,
+      user: userId
+    });
+  }
+
+  // If category still not found, use the string as-is (for Telegram bot and quick entries)
+  if (!category) {
+    // Use category name directly and infer type from transactionData.type
+    const categoryName = transactionData.category;
+    const transactionType = transactionData.type || 'expense';
+
+    const transaction = await Transaction.create({
+      user: userId,
+      type: transactionType,
+      amount: transactionData.amount,
+      category: categoryName,
+      description: transactionData.description,
+      date: transactionData.date || new Date(),
+    });
+    return transaction;
+  }
+
+  // Check if the user is the owner of the category
+  if (category.user.toString() !== userId) {
+    throw new Error("Unauthorized");
+  }
+
+  // Use category type if not explicitly provided
+  if (!transactionData.type) {
+    transactionData.type = category.type;
+  }
   transactionData.category = category.name;
-  
+
   const transaction = await Transaction.create({
     user: userId,
     ...transactionData,
