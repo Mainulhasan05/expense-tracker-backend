@@ -15,6 +15,7 @@ const cron = require('node-cron');
 const voiceService = require('./voiceService');
 const clarifaiService = require('./clarifaiService');
 const conversationalAI = require('./conversationalAI');
+const adminNotificationService = require('./adminNotificationService');
 
 class TelegramBotService {
   constructor() {
@@ -124,7 +125,7 @@ class TelegramBotService {
   /**
    * Log Telegram message and update user activity
    */
-  async logTelegramMessage(user, messageType, userMessage, botResponse, intent = null, success = true, metadata = {}) {
+  async logTelegramMessage(user, messageType, userMessage, botResponse, intent = null, success = true, metadata = {}, errorMessage = null) {
     try {
       // Create log entry
       await TelegramLog.create({
@@ -145,7 +146,18 @@ class TelegramBotService {
         $inc: { telegramMessageCount: 1 }
       });
 
-      logger.info(`Telegram message logged: ${user.email} - ${messageType} - ${intent || 'N/A'}`);
+      logger.info(`Telegram message logged: ${user.email} - ${messageType} - ${intent || 'N/A'} - ${success ? 'SUCCESS' : 'FAILED'}`);
+
+      // Notify admin if message failed
+      if (!success) {
+        await adminNotificationService.notifyTelegramMessageFailure(user, {
+          userMessage,
+          intent,
+          messageType,
+          error: errorMessage || botResponse,
+          metadata
+        });
+      }
     } catch (error) {
       logger.error('Error logging Telegram message:', error);
       // Don't throw - logging should not break the main flow
@@ -309,6 +321,9 @@ class TelegramBotService {
       );
 
       logger.info(`Telegram account linked: ${result.user.email} -> ${telegramData.id}`);
+
+      // Notify admin about new Telegram connection
+      await adminNotificationService.notifyNewTelegramUser(result.user, telegramData);
     } catch (error) {
       logger.error('Error linking Telegram account:', error);
       this.bot.sendMessage(chatId, '❌ Error linking account. Please try again.');
@@ -465,6 +480,10 @@ class TelegramBotService {
       switch (intent) {
         case 'ADD_TRANSACTION':
           await this.handleAddTransactionIntent(chatId, user, parameters, originalMessage);
+          break;
+
+        case 'ADD_MULTIPLE_TRANSACTIONS':
+          await this.handleAddMultipleTransactionsIntent(chatId, user, parameters, originalMessage);
           break;
 
         case 'VIEW_TRANSACTIONS':
@@ -647,7 +666,142 @@ class TelegramBotService {
         errorResponse,
         'ADD_TRANSACTION',
         false,
-        { error: error.message }
+        { error: error.message },
+        error.message
+      );
+    }
+  }
+
+  /**
+   * Intent Handler: Add Multiple Transactions
+   */
+  async handleAddMultipleTransactionsIntent(chatId, user, parameters, originalMessage = '') {
+    try {
+      const { transactions } = parameters;
+
+      if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+        const errorResponse = '❌ No valid transactions found. Please specify transactions with amounts.';
+        this.bot.sendMessage(chatId, errorResponse);
+
+        await this.logTelegramMessage(
+          user,
+          'text',
+          originalMessage,
+          errorResponse,
+          'ADD_MULTIPLE_TRANSACTIONS',
+          false,
+          { error: 'No transactions array' },
+          'No transactions array'
+        );
+        return;
+      }
+
+      // Track results
+      const results = [];
+      let successCount = 0;
+      let failureCount = 0;
+
+      // Process each transaction
+      for (const txn of transactions) {
+        try {
+          const { type, amount, description, category, currency } = txn;
+
+          if (!amount || amount <= 0) {
+            failureCount++;
+            results.push({
+              success: false,
+              description: description || 'Unknown',
+              error: 'Invalid amount'
+            });
+            continue;
+          }
+
+          const transaction = await this.createTransaction(user, {
+            type: type || 'expense',
+            amount: Math.abs(amount),
+            category: category || 'Other',
+            description: description || (type === 'income' ? 'Income' : 'Expense'),
+            date: new Date()
+          });
+
+          successCount++;
+          const symbol = currency === 'BDT' ? '৳' : currency === 'USD' ? '$' : '৳';
+          results.push({
+            success: true,
+            type: type || 'expense',
+            amount: Math.abs(amount),
+            description: description || 'Transaction',
+            category: category || 'Other',
+            symbol
+          });
+
+          logger.info(`Multiple transaction added: ${user.email} - ${type} ${symbol}${amount}`);
+        } catch (error) {
+          failureCount++;
+          results.push({
+            success: false,
+            description: txn.description || 'Unknown',
+            error: error.message
+          });
+          logger.error('Error adding individual transaction:', error);
+        }
+      }
+
+      // Get updated balance
+      const balance = await this.calculateBalance(user._id);
+
+      // Build response message
+      let responseMessage = `📝 *Multiple Transactions Added*\n\n`;
+      responseMessage += `✅ Success: ${successCount}\n`;
+      if (failureCount > 0) {
+        responseMessage += `❌ Failed: ${failureCount}\n`;
+      }
+      responseMessage += `\n*Details:*\n`;
+
+      results.forEach((result, index) => {
+        if (result.success) {
+          const emoji = result.type === 'income' ? '💰' : '💸';
+          responseMessage += `${index + 1}. ${emoji} ${result.symbol}${result.amount} - ${result.description} (${result.category})\n`;
+        } else {
+          responseMessage += `${index + 1}. ❌ ${result.description} - ${result.error}\n`;
+        }
+      });
+
+      responseMessage += `\n💵 *Current Balance:* ৳${balance.toFixed(2)}`;
+
+      this.bot.sendMessage(chatId, responseMessage, { parse_mode: 'Markdown' });
+
+      // Log the action
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        responseMessage,
+        'ADD_MULTIPLE_TRANSACTIONS',
+        successCount > 0,
+        {
+          totalTransactions: transactions.length,
+          successCount,
+          failureCount,
+          results
+        }
+      );
+
+      logger.info(`Multiple transactions processed: ${user.email} - ${successCount}/${transactions.length} successful`);
+    } catch (error) {
+      logger.error('Error adding multiple transactions:', error);
+      const errorResponse = '❌ Error adding transactions. Please try again.';
+      this.bot.sendMessage(chatId, errorResponse);
+
+      await this.logTelegramMessage(
+        user,
+        'text',
+        originalMessage,
+        errorResponse,
+        'ADD_MULTIPLE_TRANSACTIONS',
+        false,
+        { error: error.message },
+        error.message
       );
     }
   }
@@ -864,7 +1018,8 @@ class TelegramBotService {
         errorResponse,
         'VIEW_BALANCE',
         false,
-        { error: error.message }
+        { error: error.message },
+        error.message
       );
     }
   }

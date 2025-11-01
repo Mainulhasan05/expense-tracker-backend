@@ -147,6 +147,54 @@ class AdminNotificationService {
 
     await this.sendToAdmin(message);
   }
+
+  /**
+   * Notify admin when a new user connects their Telegram account
+   */
+  async notifyNewTelegramUser(user, telegramData) {
+    const message =
+      `🔗 *New Telegram Connection*\n\n` +
+      `👤 User: ${user.name}\n` +
+      `📧 Email: ${user.email}\n` +
+      `🤖 Telegram: @${telegramData.username || "N/A"}\n` +
+      `🆔 Telegram ID: \`${telegramData.id}\`\n` +
+      `📱 First Name: ${telegramData.first_name || "N/A"}\n` +
+      `⏰ Time: ${new Date().toLocaleString()}\n\n` +
+      `This user can now interact with the bot.`;
+
+    await this.sendToAdmin(message);
+  }
+
+  /**
+   * Notify admin when a Telegram message fails
+   */
+  async notifyTelegramMessageFailure(user, messageDetails) {
+    const {
+      userMessage,
+      intent,
+      messageType,
+      error,
+      metadata
+    } = messageDetails;
+
+    let metadataStr = "";
+    if (metadata && Object.keys(metadata).length > 0) {
+      metadataStr = `\n📋 Details: ${JSON.stringify(metadata, null, 2)}`;
+    }
+
+    const message =
+      `❌ *Telegram Message Failed*\n\n` +
+      `👤 User: ${user.name}\n` +
+      `📧 Email: ${user.email}\n` +
+      `🤖 Telegram: @${user.telegramUsername || "N/A"}\n` +
+      `💬 Message: "${userMessage || "N/A"}"\n` +
+      `🎯 Intent: ${intent || "UNKNOWN"}\n` +
+      `📝 Type: ${messageType || "text"}\n` +
+      `⚠️ Error: ${error || "Unknown error"}${metadataStr}\n` +
+      `⏰ Time: ${new Date().toLocaleString()}`;
+
+    await this.sendToAdmin(message);
+  }
 }
 
 module.exports = new AdminNotificationService();

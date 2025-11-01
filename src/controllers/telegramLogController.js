@@ -170,16 +170,19 @@ exports.deleteLog = async (req, res) => {
  */
 exports.getActivityStats = async (req, res) => {
   try {
-    // Get users with Telegram activity
-    const users = await User.find({
-      telegramId: { $exists: true, $ne: null }
-    })
-      .select('name email telegramId telegramUsername lastTelegramActivity telegramMessageCount')
-      .sort({ lastTelegramActivity: -1 });
-
-    // Get overall statistics
+    // Get overall statistics - optimized to use counts only
     const totalMessages = await TelegramLog.countDocuments();
-    const totalUsers = users.length;
+    const totalUsers = await User.countDocuments({
+      telegramId: { $exists: true, $ne: null }
+    });
+
+    // Get most recently active user (for displaying last activity)
+    const lastActiveUser = await User.findOne({
+      telegramId: { $exists: true, $ne: null },
+      lastTelegramActivity: { $exists: true }
+    })
+      .select('name email lastTelegramActivity')
+      .sort({ lastTelegramActivity: -1 });
 
     // Get message statistics by type
     const messagesByType = await TelegramLog.aggregate([
@@ -235,16 +238,34 @@ exports.getActivityStats = async (req, res) => {
       }
     ]);
 
+    // Calculate total messages in last 7 days
+    const last7Days = await TelegramLog.countDocuments({
+      createdAt: { $gte: sevenDaysAgo }
+    });
+
+    // Get active users in last 24 hours
+    const last24Hours = new Date();
+    last24Hours.setHours(last24Hours.getHours() - 24);
+    const activeUsersToday = await User.countDocuments({
+      lastTelegramActivity: { $gte: last24Hours }
+    });
+
     res.json({
       success: true,
       data: {
-        users,
         statistics: {
           totalMessages,
           totalUsers,
           successCount,
           failureCount,
           successRate: parseFloat(successRate),
+          last7Days,
+          activeUsersToday,
+          lastActiveUser: lastActiveUser ? {
+            name: lastActiveUser.name,
+            email: lastActiveUser.email,
+            lastActivity: lastActiveUser.lastTelegramActivity
+          } : null,
           messagesByType,
           messagesByIntent,
           recentActivity

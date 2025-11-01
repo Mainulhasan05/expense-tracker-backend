@@ -20,23 +20,25 @@ class ConversationalAI {
 TASK: Understand the user's intent and extract relevant information.
 
 SUPPORTED INTENTS:
-1. ADD_TRANSACTION - User wants to add an expense or income
-2. VIEW_TRANSACTIONS - User wants to see their transactions (with optional filters: last month, this month, today, date range, category)
-3. VIEW_BALANCE - User wants to see their current balance or summary
-4. VIEW_CATEGORIES - User wants to see all categories and spending breakdown
-5. ADD_CATEGORY - User wants to create a new category
-6. VIEW_REPORT - User wants to see monthly or periodic reports
-7. GENERAL_GREETING - User is greeting or having casual conversation
-8. HELP - User needs help or doesn't understand something
-9. OTHER - Cannot determine intent
+1. ADD_TRANSACTION - User wants to add a single expense or income
+2. ADD_MULTIPLE_TRANSACTIONS - User wants to add multiple expenses or incomes in one message
+3. VIEW_TRANSACTIONS - User wants to see their transactions (with optional filters: last month, this month, today, date range, category)
+4. VIEW_BALANCE - User wants to see their current balance or summary
+5. VIEW_CATEGORIES - User wants to see all categories and spending breakdown
+6. ADD_CATEGORY - User wants to create a new category
+7. VIEW_REPORT - User wants to see monthly or periodic reports
+8. GENERAL_GREETING - User is greeting or having casual conversation
+9. HELP - User needs help or doesn't understand something
+10. OTHER - Cannot determine intent
 
 RULES:
 1. Return ONLY valid JSON, nothing else
 2. Identify the PRIMARY intent
 3. Extract relevant parameters (dates, amounts, categories, etc.)
 4. Support Bengali and English (including romanized Bengali)
-5. For transactions: Extract amount, type (income/expense), description, category
-6. For queries: Extract time period (last month, this month, today, custom dates)
+5. For single transactions: Extract amount, type (income/expense), description, category
+6. For multiple transactions: Use ADD_MULTIPLE_TRANSACTIONS intent with an array of transactions
+7. For queries: Extract time period (last month, this month, today, custom dates)
 
 USER'S EXISTING CATEGORIES: ${categoryList}
 
@@ -63,6 +65,15 @@ Output: {"intent": "ADD_TRANSACTION", "confidence": 0.9, "parameters": {"type": 
 
 Input: "received salary 50000 taka"
 Output: {"intent": "ADD_TRANSACTION", "confidence": 0.95, "parameters": {"type": "income", "amount": 50000, "description": "salary", "category": "Salary", "currency": "BDT"}, "response_hint": "Adding income"}
+
+Input: "rice 434, food 453, bills 222"
+Output: {"intent": "ADD_MULTIPLE_TRANSACTIONS", "confidence": 0.9, "parameters": {"transactions": [{"type": "expense", "amount": 434, "description": "rice", "category": "Groceries", "currency": "BDT"}, {"type": "expense", "amount": 453, "description": "food", "category": "Food", "currency": "BDT"}, {"type": "expense", "amount": 222, "description": "bills", "category": "Bills", "currency": "BDT"}]}, "response_hint": "Adding multiple expenses"}
+
+Input: "বাজার ৫০০, রিকশা ৩০, খাবার ২০০"
+Output: {"intent": "ADD_MULTIPLE_TRANSACTIONS", "confidence": 0.9, "parameters": {"transactions": [{"type": "expense", "amount": 500, "description": "বাজার", "category": "Groceries", "currency": "BDT"}, {"type": "expense", "amount": 30, "description": "রিকশা", "category": "Transport", "currency": "BDT"}, {"type": "expense", "amount": 200, "description": "খাবার", "category": "Food", "currency": "BDT"}]}, "response_hint": "Adding multiple expenses"}
+
+Input: "breakfast 150 lunch 300 dinner 250"
+Output: {"intent": "ADD_MULTIPLE_TRANSACTIONS", "confidence": 0.9, "parameters": {"transactions": [{"type": "expense", "amount": 150, "description": "breakfast", "category": "Food", "currency": "BDT"}, {"type": "expense", "amount": 300, "description": "lunch", "category": "Food", "currency": "BDT"}, {"type": "expense", "amount": 250, "description": "dinner", "category": "Food", "currency": "BDT"}]}, "response_hint": "Adding multiple expenses"}
 
 Input: "what's my balance?"
 Output: {"intent": "VIEW_BALANCE", "confidence": 0.95, "parameters": {}, "response_hint": "Showing current balance"}
